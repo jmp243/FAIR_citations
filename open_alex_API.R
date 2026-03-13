@@ -63,9 +63,13 @@ alex_doi <- citing_works %>%
   filter(!is.na(doi) & doi != "") %>% 
   unique()
 
+# filter out works that were published before 2015
+alex_doi_new <- alex_doi %>% 
+  filter(publication_year > 2015)
 # # check for preprint redundancies 
+### but preprints are getting citations
 # subset works with the exact same titles
-dups <- alex_doi %>% 
+dups <- alex_doi_new %>% 
   group_by(title) %>% 
   filter(n() > 1) %>% 
   ungroup()
@@ -107,10 +111,10 @@ dups_api <- alex_doi_api %>%
 
 
 # If you *don't* have a stable unique per-row id, create one:
-citing_works <- citing_works %>%
+alex_doi_new <- alex_doi_new  %>%
   mutate(.row_id = row_number())
 
-country_wide <- citing_works %>%
+country_wide <- alex_doi_new %>%
   # Keep only the identifier and the countries column
   select(.row_id, authorships.countries) %>%
   # Split rows on "|" and clean
@@ -145,18 +149,54 @@ country_dict <- data.frame(
 country_dict$country[country_dict$code == "XK"] <- "Kosovo"
 
 # Join back to original if you want the rest of the columns:
-citing_works_wide <- citing_works %>%
+alex_doi_new_wide <- alex_doi_new %>%
   left_join(country_wide, by = ".row_id") %>%
   select(-.row_id)
 
 # citations by year
 library(lubridate)
-citing_works_wide$publication_date <- as.Date(citing_works_wide$publication_date,
+alex_doi_new_wide$publication_date <- as.Date(alex_doi_new_wide$publication_date,
                                          format = "%m/%d/%Y")
 
-citing_works_wide$publication_year <- as.integer(citing_works_wide$publication_year)
+alex_doi_new_wide$publication_year <- as.integer(alex_doi_new_wide$publication_year)
 
+# graph 
+citations_by_year_line <- alex_doi_new_wide %>% 
+  mutate(publication_year = as.integer(publication_year)) %>% 
+  group_by(publication_year) %>% 
+  filter(publication_year > 2015) %>% 
+  summarise(doi_count = n_distinct(doi_clean)) %>% 
+  ggplot(aes(x = publication_year, y = doi_count)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue") +
+  labs(
+    title = "Unique DOIs by Publication Year",
+    x = "Publication Year",
+    y = "Number of Unique DOIs"
+  ) +
+  theme_minimal()
 
+citations_by_year_line
+
+library(RColorBrewer)
+
+citations_by_bar <- alex_doi_new_wide %>% 
+  mutate(publication_year = as.integer(publication_year)) %>% 
+  filter(publication_year > 2015) %>% 
+  group_by(publication_year, type) %>% 
+  summarise(doi_count = n_distinct(doi_clean), .groups = "drop") %>% 
+  ggplot(aes(x = factor(publication_year), y = doi_count, fill = type)) +
+  geom_col(position = "stack") +
+  # scale_color_grey()+
+  # scale_color_brewer(palette = "PuOr") +
+  labs(
+    title = "Unique DOIs by Publication Year and Type",
+    x = "Publication Year",
+    y = "Number of Unique DOIs"
+  ) +
+  theme_minimal()
+
+citations_by_bar
 # type of article (primary article, review, editorial, etc)
 
 # distribution of citations by primary topic and journal name (insight into disciplines)
