@@ -34,13 +34,13 @@ usethis::edit_r_environ()
 
 options(openalexR.apikey = "")
 
-Sys.getenv("OPENALEX_API_KEY") # half the time with Sam's computer
+Sys.getenv("OPENALEX_API_KEY") 
 #####################################################
 
 citing_works_api <- oa_fetch(
   entity = "works",
   cites = "W2302501749"
-) # run from 11:30 
+) #9:56 to 
 
 
 # identify the unique doi
@@ -49,7 +49,7 @@ alex_doi_api <- citing_works_api %>%
   unique()
 
 # read in CSV of the works citing FAIR2016
-citing_works <- read_csv("works-csv-March11.csv") # define to 3/15/2026
+citing_works <- read_csv("ten_yr_openalex_citation_corpus_2026-03-16.csv") # define to 3/15/2026
 
 # rename display_name as title
 citing_works$title <- citing_works$display_name
@@ -66,6 +66,7 @@ alex_doi <- citing_works %>%
 # filter out works that were published before 2015
 alex_doi_new <- alex_doi %>% 
   filter(publication_year > 2015)
+
 # # check for preprint redundancies 
 ### but preprints are getting citations
 # subset works with the exact same titles
@@ -104,13 +105,12 @@ dups_api <- alex_doi_api %>%
 #   ungroup() %>% 
 #   filter(!is.na(abstract), abstract != "")
 
-
+#### Section: Country of Origin #### 
 ## distribution of citations by author country of origin 
 ## (insight into global reach)
+
 ### parse out authorship countries and split the columns
-
-
-# If you *don't* have a stable unique per-row id, create one:
+# unique row idenifier
 alex_doi_new <- alex_doi_new  %>%
   mutate(.row_id = row_number())
 
@@ -179,6 +179,7 @@ citations_by_year_line <- alex_doi_new_wide %>%
 citations_by_year_line
 
 library(RColorBrewer)
+# type of article (primary article, review, editorial, etc)
 
 citations_by_bar <- alex_doi_new_wide %>% 
   mutate(publication_year = as.integer(publication_year)) %>% 
@@ -188,7 +189,7 @@ citations_by_bar <- alex_doi_new_wide %>%
   ggplot(aes(x = factor(publication_year), y = doi_count, fill = type)) +
   geom_col(position = "stack") +
   # scale_color_grey()+
-  # scale_color_brewer(palette = "PuOr") +
+  # scale_fill_brewer(palette = "PuOr") +
   labs(
     title = "Unique DOIs by Publication Year and Type",
     x = "Publication Year",
@@ -197,7 +198,50 @@ citations_by_bar <- alex_doi_new_wide %>%
   theme_minimal()
 
 citations_by_bar
-# type of article (primary article, review, editorial, etc)
+
+# build an interactive version with plotly
+library(dplyr)
+library(plotly)
+library(RColorBrewer)
+
+df <- alex_doi_new_wide %>% 
+  mutate(publication_year = as.integer(publication_year)) %>% 
+  filter(publication_year > 2015) %>% 
+  group_by(publication_year, type) %>% 
+  summarise(doi_count = n_distinct(doi_clean), .groups = "drop") %>% 
+  group_by(publication_year) %>% 
+  mutate(year_total = sum(doi_count)) %>% 
+  ungroup()
+
+# Choose a palette strategy (pick ONE of the following)
+# A) Larger Brewer (up to 12)
+# pal <- brewer.pal(max(3, min(12, dplyr::n_distinct(df$type))), "Set3")
+
+# B) Viridis discrete (scales as needed)
+# In ggplot use scale_fill_viridis_d; for plotly, build a manual vector:
+type_levels <- sort(unique(df$type))
+pal <- viridis::viridis(length(type_levels), option = "plasma")
+type_colors <- setNames(pal, type_levels)
+
+p <- ggplot(df, aes(
+  x = factor(publication_year), y = doi_count, fill = type,
+  text = paste0(
+    "Year: ", publication_year, "\n",
+    "Type: ", type, "\n",
+    "Unique DOIs: ", doi_count, "\n",
+    "Year total: ", year_total
+  )
+)) +
+  geom_col(position = "stack") +
+  scale_fill_manual(values = type_colors) +   # swap for your chosen strategy
+  labs(
+    title = "Unique DOIs by Publication Year and Type",
+    x = "Publication Year", y = "Number of Unique DOIs", fill = "Article Type"
+  ) +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+
 
 # distribution of citations by primary topic and journal name (insight into disciplines)
 
