@@ -242,9 +242,106 @@ p <- ggplot(df, aes(
 
 ggplotly(p, tooltip = "text")
 
-
+#### Section: Distribution of Primary Topics ####
 # distribution of citations by primary topic and journal name (insight into disciplines)
+alex_doi_topic <- alex_doi_new %>% 
+  filter(publication_date >= as.Date("2016-03-15"),
+  publication_date <= as.Date("2026-03-15")) %>%
+  filter(doi_clean!= "10.1038/sdata.2016.18") %>% 
+  mutate(journal_name = primary_location.source.display_name) %>% 
+  mutate(topic = primary_topic.display_name)
 
+table(alex_doi_topic$topic)
+
+# subset topic words
+topic_data_alex <- alex_doi_topic$topic
+
+# domain-specific academic stopwords
+domain_stopwords <- c(
+  "study", "analysis", "research", "approach",
+  "method", "methods", "using", "based",
+  "advanced", "advances"
+)
+
+dtm_topic <- CreateDtm(
+  doc_vec   = topic_data_alex,
+  doc_names = alex_doi_topic$doi_clean,
+  ngram_window = c(1, 2),
+  stopword_vec = c(
+    stopwords::stopwords("en"),
+    stopwords::stopwords(source = "smart"),
+    domain_stopwords          # add domain stopwords
+  ),
+  lower = TRUE,
+  remove_punctuation = TRUE,
+  remove_numbers = TRUE,
+  verbose = FALSE,
+  cpus = 1
+)
+
+# TF–IDF-style output
+tf_mat_topic <- TermDocFreq(dtm_topic)
+
+# Subset abstract data
+topic_data_alex <- alex_doi_topic$topic
+
+# domain-specific academic stopwords
+domain_stopwords <- c(
+  "study", "analysis", "research", "approach",
+  "method", "methods", "using", "based",
+  "advanced", "advances"
+)
+
+dtm_topic <- CreateDtm(
+  doc_vec   = topic_data_alex,
+  doc_names = alex_doi_topic$doi_clean,
+  ngram_window = c(1, 2),
+  stopword_vec = c(
+    stopwords::stopwords("en"),
+    stopwords::stopwords(source = "smart"),
+    domain_stopwords          # ✅ add them here
+  ),
+  lower = TRUE,
+  remove_punctuation = TRUE,
+  remove_numbers = TRUE,
+  verbose = FALSE,
+  cpus = 1
+)
+
+# TF–IDF-style output
+tf_mat_topic <- TermDocFreq(dtm_topic)
+
+# tfidf_mat_topic <- as.matrix(tf_mat_topic$idf)
+
+# how do I trim this further
+tf_mat_topic
+
+str(tf_mat_topic)
+
+n_docs <- length(unique(alex_doi_topic$doi_clean))
+
+tf_mat_topic_trimmed <- tf_mat_topic %>%
+  dplyr::filter(
+    doc_freq >= 2,
+    doc_freq <= 0.5 * n_docs
+  )
+# n_docs <- length(unique(alex_doi_topic$doi_clean))
+
+tf_mat_topic_trimmed <- tf_mat_topic %>%
+  dplyr::filter(
+    doc_freq >= 2,
+    doc_freq <= 0.5 * n_docs
+  )
+tf_mat_topic_trimmed
+
+# trim academic stopwords
+domain_stopwords <- c(
+  "study", "analysis", "research", "approach",
+  "method", "methods", "using", "based", "advanced", "advances"
+)
+
+tf_mat_topic_trimmed <- tf_mat_topic %>%
+  dplyr::filter(!term %in% domain_stopwords)
 
 # Subset abstract data
 abstract_data <- citing_works$abstract
@@ -263,6 +360,11 @@ dtm <- CreateDtm(doc_vec = abstract_data,
 tf_mat <- TermDocFreq(dtm)
 
 tfidf_mat <- as.matrix(tf_mat$idf)
+
+## remove like words
+library(textstem)
+
+topic_data_alex_lemma <- lemmatize_strings(topic_data_alex)
 
 ######### dimensions data ###############
 Dimensions_Publication_2026_a <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-01-28.csv", skip = 1)
