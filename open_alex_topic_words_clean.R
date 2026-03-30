@@ -1,0 +1,339 @@
+# =============================================================================
+# open_alex_topic_words_clean.R
+# Topic-word frequency analysis using OpenAlex data
+# =============================================================================
+
+library(dplyr)
+library(stringr)
+library(textstem)
+library(textmineR)
+library(stopwords)
+library(readr)
+
+# -----------------------------------------------------------------------------
+# Section 1: Build topic data frame
+# -----------------------------------------------------------------------------
+
+alex_doi_topic <- alex_doi_new %>%
+  filter(
+    publication_date >= as.Date("2016-03-15"),
+    publication_date <= as.Date("2026-03-15"),
+    doi_clean != "10.1038/sdata.2016.18"
+  ) %>%
+  mutate(
+    journal_name = primary_location.source.display_name,
+    topic        = primary_topic.display_name
+  )
+
+# -----------------------------------------------------------------------------
+# Section 2: Collapse map  (variants → canonical term)
+# -----------------------------------------------------------------------------
+
+collapse_map <- list(
+
+  # behavior
+  "behavior"         = c("behaviour", "behavioral", "behavioural"),
+
+  # biology family
+  "biology"          = c("biological"),
+  "microbiology"     = c("microbial", "microbe", "microorganism"),
+  "neurobiology"     = c("neurobiological"),
+  "immunology"       = c("immunological", "immune", "immunity"),
+  "pharmacology"     = c("pharmacological", "pharmaceutical", "pharmacokinetics",
+                         "pharmacogenetics", "pharmacovigilance"),
+  "toxicology"       = c("toxic", "toxicity", "toxin"),
+  "epidemiology"     = c("epidemiological"),
+  "physiology"       = c("physiological"),
+  "morphology"       = c("morphological"),
+  "pathology"        = c("pathological", "pathogenesis", "pathophysiology",
+                         "pathogen"),
+  "ecology"          = c("ecological"),
+  "psychology"       = c("psychological", "psychosocial", "psychometric",
+                         "psychosomatic"),
+  "sociology"        = c("sociological", "societal"),
+  "geology"          = c("geological", "geologic"),
+  "geophysics"       = c("geophysical"),
+  "geochemistry"     = c("geochemical"),
+  "biochemistry"     = c("biochemical"),
+  "astronomy"        = c("astronomical"),
+  "astrophysics"     = c("astrophysical"),
+  "archaeology"      = c("archaeological"),
+  "anthropology"     = c("anthropological"),
+  "musicology"       = c("musicological"),
+
+  # economy
+  "economy"          = c("economic", "economics"),
+  "finance"          = c("financial"),
+
+  # technology
+  "technology"       = c("technological"),
+  "nanotechnology"   = c("nanomaterials", "nanoparticle", "nanostructure",
+                         "nanofabrication", "nanocluster", "nanonetworks",
+                         "nanoplatforms"),
+
+  # chemistry / physics
+  "chemistry"        = c("chemical", "chemometric"),
+  "physics"          = c("physical"),
+  "thermodynamics"   = c("thermodynamic", "thermography"),
+
+  # medicine / clinical
+  "medicine"         = c("medical", "medicinal"),
+  "diagnosis"        = c("diagnostic", "diagnostics"),
+  "surgery"          = c("surgical"),
+  "therapy"          = c("therapeutic", "theranostics"),
+  "nutrition"        = c("nutritional", "nutrient"),
+  "vaccination"      = c("vaccine"),
+  "infection"        = c("infectious", "infective"),
+  "inflammation"     = c("inflammatory", "neuroinflammation"),
+  "cancer"           = c("carcinoma", "carcinogen", "carcinogenesis", "oncology"),
+  "neuroscience"     = c("neurological", "neurology", "neurodegeneration",
+                         "neurodegenerative", "neurogenesis", "neuroplasticity",
+                         "neuropharmacology", "neuroethics", "neuroimaging",
+                         "neurovascular", "neurotransmitter", "neurodevelopmental",
+                         "neurogenetic"),
+  "cardiovascular"   = c("cardiac", "coronary", "cardiology"),
+  "pulmonary"        = c("respiratory"),
+  "genetics"         = c("genetic", "genetically", "genomics", "genomic"),
+  "metabolism"       = c("metabolic", "metabolomics"),
+  "rehabilitation"   = c("rehab"),
+
+  # environment / earth science
+  "environment"      = c("environmental"),
+  "hydrology"        = c("hydrological", "hydrogeology"),
+  "sustainability"   = c("sustainable"),
+  "climate"          = c("climatic"),
+
+  # social sciences
+  "education"        = c("educational"),
+  "politics"         = c("political"),
+  "statistics"       = c("statistical"),
+  "mathematics"      = c("mathematical"),
+  "philosophy"       = c("philosophical"),
+  "law"              = c("legal", "judicial"),
+
+  # engineering / computing
+  "engineering"      = c("engineer"),
+  "computation"      = c("computational", "compute"),
+  "automation"       = c("automate"),
+  "optimization"     = c("optimal"),
+  "simulation"       = c("simulate"),
+  "manufacture"      = c("manufacturing", "fabrication"),
+
+  # agriculture
+  "agriculture"      = c("agricultural", "agronomic", "agronomy"),
+
+  # other
+  "development"      = c("developmental"),
+  "regulation"       = c("regulatory"),
+  "reproduction"     = c("reproductive"),
+  "organization"     = c("organizational"),
+  "communication"    = c("communications"),
+  "innovation"       = c("innovative"),
+  "integration"      = c("integrate"),
+  "distribution"     = c("distribute"),
+  "production"       = c("produce"),
+  "analysis"         = c("analytic", "analytics"),
+  "spectroscopy"     = c("spectrometry"),
+  "radiotherapy"     = c("radiopharmaceutical", "radiomics", "radiology",
+                         "radiography")
+)
+
+# Build flat lookup: old term → collapsed_term
+lookup <- stack(collapse_map)
+names(lookup) <- c("term_canonical", "collapsed_term")
+lookup$term_canonical <- as.character(lookup$term_canonical)
+lookup$collapsed_term  <- as.character(lookup$collapsed_term)
+
+# -----------------------------------------------------------------------------
+# Section 3: Apply collapse to alex_doi_topic, then extract topic text
+# -----------------------------------------------------------------------------
+
+alex_doi_topic <- alex_doi_topic %>%
+  left_join(lookup, by = c("topic" = "term_canonical")) %>%
+  mutate(
+    collapsed_term = coalesce(collapsed_term, topic)
+  )
+
+# Use collapsed_term as the document text for TermDocFreq
+topic_data_alex <- alex_doi_topic$collapsed_term
+
+# -----------------------------------------------------------------------------
+# Section 4: Domain stopwords (defined once)
+# -----------------------------------------------------------------------------
+
+domain_stopwords <- c(
+  "study", "analysis", "research", "approach",
+  "method", "methods", "using", "based",
+  "advanced", "advances"
+)
+
+# -----------------------------------------------------------------------------
+# Section 5: Lemmatize and build DTM
+# -----------------------------------------------------------------------------
+
+topic_data_alex_lemma <- lemmatize_strings(topic_data_alex)
+
+dtm_topic <- CreateDtm(
+  doc_vec      = topic_data_alex_lemma,
+  doc_names    = alex_doi_topic$doi_clean,
+  ngram_window = c(1, 2),
+  stopword_vec = c(
+    stopwords::stopwords("en"),
+    stopwords::stopwords(source = "smart"),
+    domain_stopwords
+  ),
+  lower             = TRUE,
+  remove_punctuation = TRUE,
+  remove_numbers    = TRUE,
+  verbose           = FALSE,
+  cpus              = 1
+)
+
+# -----------------------------------------------------------------------------
+# Section 6: TermDocFreq — stored as tf_mat to avoid shadowing the function
+# -----------------------------------------------------------------------------
+
+tf_mat_topic <- TermDocFreq(dtm_topic)
+
+# -----------------------------------------------------------------------------
+# Section 7: Apply fine-grained term grouping (bigram collapse + lookup)
+# -----------------------------------------------------------------------------
+tf_mat_topic_grouped <- tf_mat_topic %>%
+  mutate(
+    term_canonical = case_when(
+      term %in% c("amphibian", "amphibian_reptile")        ~ "amphibian",
+      term %in% c("acid", "acid_chemistry")                ~ "acid",
+      term %in% c("adipokines", "adipokines_inflammation")  ~ "adipokines",
+      term %in% c("fracture", "fractures", "fracture_mechanics") ~ "fracture",
+      TRUE ~ term
+    )
+  ) %>%
+  left_join(lookup, by = "term_canonical") %>%
+  mutate(
+    collapsed_term = coalesce(collapsed_term, term_canonical)  # keep as its own column
+  )
+# tf_mat_topic_grouped <- tf_mat_topic %>%
+#   mutate(
+#     term_canonical = case_when(
+#       term %in% c("amphibian", "amphibian_reptile")       ~ "amphibian",
+#       term %in% c("acid", "acid_chemistry")               ~ "acid",
+#       term %in% c("adipokines", "adipokines_inflammation") ~ "adipokines",
+#       term %in% c("fracture", "fractures", "fracture_mechanics") ~ "fracture",
+#       TRUE ~ term
+#     )
+#   ) %>%
+#   left_join(lookup, by = "term_canonical") %>%
+#   mutate(
+#     term_canonical = coalesce(collapsed_term, term_canonical)
+#   ) %>%
+#   select(-collapsed_term)
+
+# -----------------------------------------------------------------------------
+# Section 8: Trim by document frequency
+# -----------------------------------------------------------------------------
+n_docs <- length(unique(alex_doi_topic$doi_clean))
+
+tf_mat_topic_trimmed <- tf_mat_topic_grouped %>%
+  filter(!term %in% domain_stopwords) %>%
+  group_by(collapsed_term) %>%
+  summarise(
+    term_freq = sum(term_freq),
+    doc_freq  = sum(doc_freq),
+    idf       = mean(idf),        # average IDF across collapsed variants
+    .groups   = "drop"
+  ) %>%
+  filter(
+    doc_freq >= 2,
+    doc_freq <= 0.5 * n_docs
+  ) %>%
+   arrange(desc(term_freq))
+# n_docs <- length(unique(alex_doi_topic$doi_clean))
+# 
+# tf_mat_topic_trimmed <- tf_mat_topic_grouped %>%
+#   filter(
+#     doc_freq >= 2,
+#     doc_freq <= 0.5 * n_docs,
+#     !term %in% domain_stopwords
+#   )
+
+# -----------------------------------------------------------------------------
+# Section 9: Save output
+# -----------------------------------------------------------------------------
+
+write_csv(tf_mat_topic_trimmed, "TermDocFreq_long_collapsed.csv")
+
+# -----------------------------------------------------------------------------
+# Section 10: Journal title counts (reference / visualization)
+# -----------------------------------------------------------------------------
+
+alex_doi_unique <- alex_doi_new %>%
+  mutate(
+    journal_name = primary_location.source.display_name,
+    doi_clean    = str_remove(doi, "https://doi.org/"),
+    journal_name_clean = journal_name %>%
+      str_replace("^\\d{4}\\s+", "") %>%
+      str_replace_all("[[:cntrl:]]", "") %>%
+      str_replace_all("[^[:alnum:] [:space:]]", "") %>%
+      str_squish()
+  ) %>%
+  filter(
+    !is.na(journal_name_clean),
+    !is.na(doi_clean),
+    publication_date >= as.Date("2016-03-15"),
+    publication_date <= as.Date("2026-03-15"),
+    doi_clean != "10.1038/sdata.2016.18"
+  ) %>%
+  mutate(publication_year = as.integer(publication_year)) %>%
+  group_by(publication_year, type)
+
+journal_doi_counts <- alex_doi_topic %>%
+  filter(!is.na(journal_name), !is.na(doi_clean)) %>%
+  count(journal_name, doi_clean) %>%
+  count(journal_name, name = "n_unique_doi")
+
+alex_doi_topic %>%
+  count(journal_name, sort = TRUE) %>%
+  slice_head(n = 30) %>%
+  ggplot(aes(x = reorder(journal_name, n), y = n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Top 30 Journals", x = "Journal", y = "Count")
+
+# -----------------------------------------------------------------------------
+# Section 11: Dimensions data
+# -----------------------------------------------------------------------------
+
+Dimensions_Publication_2026_a <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-01-28.csv", skip = 1)
+Dimensions_Publication_2026_b <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-00.csv", skip = 1)
+Dimensions_Publication_2026_c <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-32.csv", skip = 1)
+Dimensions_Publication_2026_d <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-49.csv", skip = 1)
+
+Dimensions_data <- bind_rows(
+  Dimensions_Publication_2026_a,
+  Dimensions_Publication_2026_b,
+  Dimensions_Publication_2026_c,
+  Dimensions_Publication_2026_d
+)
+
+dimensions_unique_doi <- Dimensions_data %>%
+  filter(!is.na(DOI) & DOI != "") %>%
+  unique()
+
+abstract_data_dim <- dimensions_unique_doi$Abstract
+
+dtm_dim <- CreateDtm(
+  doc_vec      = abstract_data_dim,
+  doc_names    = dimensions_unique_doi$DOI,
+  ngram_window = c(1, 2),
+  stopword_vec = c(
+    stopwords::stopwords("en"),
+    stopwords::stopwords(source = "smart")
+  ),
+  lower             = TRUE,
+  remove_punctuation = TRUE,
+  remove_numbers    = TRUE,
+  verbose           = FALSE,
+  cpus              = 1
+)
+
+tf_mat_dim <- TermDocFreq(dtm_dim)
