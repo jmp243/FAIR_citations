@@ -1,5 +1,5 @@
 FAIR retrospective work 
-Authoritative data is 
+Authoritative data is in the FAIR google drive.
 
 Start with open_alex_API.R
 Then use open_alex_topic_words_clean.R
