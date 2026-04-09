@@ -320,12 +320,13 @@ alex_doi_topic %>%
 jstor <- readr::read_delim("JSTOR_Global_Archive_Primary_Source_Collection_2026-04-07.txt", delim = "\t")
 # JSTOR's coverage is not great in the sciences
 
+#### Domain Data ####
 # OPEN Alex has 4 domains
 ## read in 4 csv files 
-phys_sci_domain <- read_csv("physical_science_domain_openAlex.csv")
-soci_sci_domain <- read_csv("social_sciences_domain_openAlex.csv")
-health_sci_domain <- read_csv("health_sciences_domain_openAlex.csv")
-life_sci_domain <- read_csv("life_sciences_domain_openAlex.csv")
+phys_sci_domain <- read_csv("domain_data/physical_science_domain_openAlex.csv")
+soci_sci_domain <- read_csv("domain_data/social_sciences_domain_openAlex.csv")
+health_sci_domain <- read_csv("domain_data/health_sciences_domain_openAlex.csv")
+life_sci_domain <- read_csv("domain_data/life_sciences_domain_openAlex.csv")
 
 # create a column for domain for each of them
 phys_sci_domain$domain <- "phys_sci"
@@ -342,101 +343,47 @@ alex_doi_domain <- alex_doi_domain %>%
 
 alex_doi_new_wide <- alex_doi_new_wide %>% 
   left_join(alex_doi_domain)
+#### Field Data ####
+# read in field dataset
+comp_sci_field <- read_csv("field_data/comp_sci_field_openAlex.csv")
+biochem_field <- read_csv("field_data/biochem_field_openAlex.csv")
+env_sci_field <- read_csv("field_data/env_sci_field_openAlex.csv")
+decision_sci_field <- read_csv("field_data/decision_sci_field_openAlex.csv")
+medicine_field <- read_csv("field_data/medicine_field_openAlex.csv")
+planet_sci_field <- read_csv("field_data/planet_sci_field_openAlex.csv")
+engineering_field <- read_csv("field_data/engineering_field_openAlex.csv")
+soci_sci_field <- read_csv("field_data/soci_sci_field_openAlex.csv")
+mat_sci_field <- read_csv("field_data/mat_sci_field_openAlex.csv")
+agri_bio_sci_field <- read_csv("field_data/agri_bio_sci_field_openAlex.csv")
 
+# create a column for field for each of them
+comp_sci_field$field <- "comp_sci"
+soci_sci_field$field <- "soci_sci"
+mat_sci_field$field <- "material_sci"
+engineering_field$field <- "engineering"
+medicine_field$field <- "medicine"
+planet_sci_field$field <- "planetary_space_sci"
+biochem_field$field <- "biochem_genetics_molecular"
+agri_bio_sci_field$field <- "agricultural_bio_sci"
+decision_sci_field$field <- "decision_sci"
+env_sci_field$field <- "environmental_sci"
 
-# install.packages("rvest")
-# library(rvest)
-# # library(tidyverse)
-# 
-# # read JSTOR subject
-# url <- "https://www.jstor.org/subjects"
-# page <- read_html(url)
-# html_structure(page)
+# combine fields into one data frame
+alex_doi_field <- rbind(comp_sci_field, mat_sci_field,
+                        env_sci_field, decision_sci_field,
+                        engineering_field, medicine_field,
+                        soci_sci_field, agri_bio_sci_field,
+                        planet_sci_field, biochem_field)
 
-# library(dplyr)
-# library(stringr)
-# 
-# alex_doi_journal <- read.csv("alex_doi_journal.csv", stringsAsFactors = FALSE)
-# 
-# categorize <- function(journal_name, topic) {
-#   journal <- tolower(journal_name)
-#   t <- tolower(topic)
-#   combined <- paste(t, journal)
-# 
-#   # IEEE → Engineering
-#   if (str_detect(journal, "\\bieee\\b")) return("Engineering")
-# 
-#   # Oncology
-#   if (str_detect(combined, "cancer|oncol|tumor|leukemia|lymphoma|melanoma|glioma|sarcoma|carcinoma|neoplasm|metastas|radiother|chemotherapy|breast cancer|lung cancer|prostate cancer|colorectal cancer")) return("Oncology")
-# 
-#   # Neuroscience & Psychology
-#   if (str_detect(combined, "neuro|brain|cogniti|psychol|psychiatr|mental health|alzheimer|parkinson|epilepsy|stroke|dementia|autism|schizophrenia|depression|anxiety|bipolar|traumatic brain|eeg|brain.computer|fmri|neuroimag|ptsd|mindfulness|migraine|sleep.*disorder|circadian|opioid|addiction")) return("Neuroscience & Psychology")
-# 
-#   # Bioinformatics & Genomics
-#   if (str_detect(combined, "bioinform|genomic|genome|proteom|transcript|sequenc|phylogen|single.cell|epigenetic|dna methyl|chromatin|chromosome|gwas|gene regulat|gene express|rna.seq|mrna|microrna|crispr|gene edit|metabolom|omics")) return("Bioinformatics & Genomics")
-# 
-#   # AI & Machine Learning
-#   if (str_detect(combined, "machine learn|deep learn|neural network|artificial intelligen|natural language process|computer vision|large language|generative adversarial|reinforcement learn|explainable ai|few.shot|recommender system|sentiment analysis|topic model|text classif|image classif|object detect|speech recognit|graph neural")) return("AI & Machine Learning")
-# 
-#   # Data Science & Informatics
-#   if (str_detect(combined, "data sci|data min|big data|data analyt|data quality|data manag|research data|open.*data|metadata|data.*driven|bibliometric|scientometric|open access|library.*information|information.*literacy|semantic web|ontology|scholarly|digital.*humanit")) return("Data Science & Informatics")
-# 
-#   # Medicine & Health
-#   if (str_detect(combined, "medicine|medical|clinic|health|hospital|patient|disease|epidemi|public health|nursing|pharmac|drug|therapeut|vaccin|immunol|infect|pathol|surgery|cardio|dermatol|radiol|pediatr|obstet|gynecol|dental|ophthalm|orthop|urol|pulmon|endocrin|rheumatol|gastro|hepat|nephrol|hematol|anesthes|emergency|rehabilit|diagnos|telemedicine|telehealth|covid|sars|hiv|tuberculosis|diabetes|obesity|pregnancy|maternal|neonatal|pathol")) return("Medicine & Health")
-# 
-#   # Biology & Life Sciences
-#   if (str_detect(combined, "biology|biotech|biotechnol|cell bio|molecular bio|biochem|biophys|microbiol|virol|ecolog|evolution|species.*distribut|animal.*behav|marine.*ecol|forest.*ecol|plant.*bio|plant.*ecol|mycorrhiz|enzyme|autophagy|apoptosis|cytokine|receptor.*signal|immune.*cell|t.cell|b.cell|mitochond|pluripotent|photosynthes|dna.*repair|rna.*splicing|aquatic.*ecosys|freshwater|fish.*ecol|aquaculture|coral|wildlife|conservation.*bio|biodiversit|invasive.*species|animal.*genetic|veterinary|avian|amphibian|reptile")) return("Biology & Life Sciences")
-# 
-#   # Chemistry & Materials
-#   if (str_detect(combined, "chemi|polymer|catalys|molecule|nanomater|nanoparticle|nanotechnol|surface science|colloid|crystal|spectroscop|synthesis|organic.*chemistry|inorganic|analytical.*chem|chromatograph|nmr|electrochemi|thermodynam|metal.organic framework|zeolite|graphene|perovskite|mxene|supercapacitor|hydrogel|photocatalysis|ionic liquid")) return("Chemistry & Materials")
-# 
-#   # Physics & Astronomy
-#   if (str_detect(combined, "physics|quantum|astro|exoplanet|astrophysic|cosmolog|dark matter|galaxi|particle.*physics|nuclear.*physics|plasma.*physics|atomic.*physics|particle.*accelerat|semiconductor.*device|superconductor|cold.*atom|bose.einstein|fluid dynamics|turbulent|aerodynam|radio.*astronom|radioactive.*decay|radioactivity")) return("Physics & Astronomy")
-# 
-#   # Engineering
-#   if (str_detect(combined, "engineer|manufactur|mechanical.*design|civil.*engineer|structural.*engineer|construction|aerospace|robotics|control.*system|fault.*detection|uav|drone|electric.*motor|electric.*vehicle|power.*system|smart.*grid|microwave|wireless.*sensor|iot|embedded.*system|signal.*processing|additive.*manufactur|3d.*print|welding|fatigue.*fracture|geotechnical|reservoir.*engineering|drilling|oil.*gas|mining|infrastructure")) return("Engineering")
-# 
-#   # Environment & Sustainability
-#   if (str_detect(combined, "ecosystem|biodiversit|land.*use|deforestation|carbon.*footprint|greenhouse.*gas|emission|air.*quality|atmospheric.*chem|microplastic|plastic.*pollution|environmental.*toxicol|ecotoxicol|heavy metal.*environ|wastewater|water.*pollution|oil.*spill|toxic.*pollutant|recycling|waste.*management|environmental.*impact|life.*cycle.*assessment|green.*it|sustainable.*urban|sustain|climate.*change|ecolog")) return("Environment & Sustainability")
-# 
-#   # Earth & Geosciences
-#   if (str_detect(combined, "geograph|geolog|geosci|earth.*science|seismol|earthquake|tectonic|geochemistry|geomorphol|geophysic|hydrogeol|karst|groundwater|geothermal|volcan|paleoclimat|sediment|rock.*mechanic|geomagnet|gnss|lidar|remote.*sensing|gis|cartograph|oceanograph|ocean.*acidification|precipitation|flood.*risk|hydrology|cryosphere|ice.*dynamics|polar|landslide")) return("Earth & Geosciences")
-# 
-#   # Agriculture & Food Science
-#   if (str_detect(combined, "agri|food(?!.*security.*health)|crop|farm|plant.*pathog|plant.*breed|wheat|barley|rice|soybean|maize|potato|cassava|banana|sugarcane|livestock|dairy|milk|poultry|ruminant|aquaculture|fisheries|postharvest|food.*qualit|food.*safety|food.*process|pesticide.*residue|organic.*food|agroforest|silvopastor|horticult|viticultur|irrigation|medicinal.*plant")) return("Agriculture & Food Science")
-# 
-#   # Education
-#   if (str_detect(combined, "\\beducation\\b|teaching|pedagog|curriculum|e.learning|online.*learning|higher.*education|doctoral.*education|early.*childhood.*education|educational.*game|gamification|intelligent.*tutoring|learning.*analytic|problem.*based.*learning|academic.*integrity|educational.*assessment|educational.*leadership|digital.*literacy.*education|vocational.*education")) return("Education")
-# 
-#   # Social Sciences
-#   if (str_detect(combined, "sociolog|anthropolog|demographic|migration|refugee|diaspora|indigenous.*studies|gender.*diversit|gender.*inequal|lgbtq|critical.*race|disability.*education|work.family|job.*satisf|organizational.*behav|survey.*method|qualitative.*method|ethnograph|oral.*history|discourse.*analysis|cultural.*identity|opinion.*dynamics|misinformation|electoral.*system|political.*participat|indigenous.*health|sex.*work")) return("Social Sciences")
-# 
-#   # Business & Economics
-#   if (str_detect(combined, "\\beconom|financ|\\bbusiness\\b|\\bmanagement\\b|\\bmarket\\b|accounting|supply.*chain|trade|commerce|entrepreneurship|fintech|crowdfunding|corporate.*governance|corporate.*social.*responsib|corporate.*taxation|risk.*management.*financial|stock.*market|private.*equity|venture.*capital|innovation.*policy|digital.*economy")) return("Business & Economics")
-# 
-#   # Law & Policy
-#   if (str_detect(combined, "\\blaw\\b|\\blegal\\b|justice|regulation|governance|\\bpolicy\\b|administrative.*law|constitutional|judicial|international.*law|maritime.*law|environmental.*law|intellectual.*property.*law|ai.*law|electoral.*system|political.*influence")) return("Law & Policy")
-# 
-#   # Arts & Humanities
-#   if (str_detect(combined, "histor|philosophy|humanities|literature|cultural.*studies|archaeology|\\bmusic\\b|theatre|performance.*studies|heritage|digital.*humanities|medieval|ancient|classical|literary|poetry|fiction|narrative|rhetoric|translation.*studies|lexicography")) return("Arts & Humanities")
-# 
-#   # Mathematics & Statistics
-#   if (str_detect(combined, "\\bmath|\\bstatistic|probabilit|\\boptim|algebra|calculus|graph.*theory|topology|combinatorics|number.*theory|differential.*equation|numerical.*analysis|bayesian|markov.*chain|monte.*carlo|time.*series.*analysis|complex.*network.*analysis|rough.*set|fuzzy.*logic")) return("Mathematics & Statistics")
-# 
-#   # Energy
-#   if (str_detect(combined, "\\benergy\\b|solar|wind.*power|photovoltaic|fuel cell|nuclear.*energy|renewable.*energy|energy.*storage|smart.*grid|electric.*vehicle.*infrastructure|biofuel.*energy|hydrogen.*energy|carbon.*capture|electrocatalyst.*energy")) return("Energy")
-# 
-#   return("Other")
-# }
-# 
-# alex_doi_journal <- alex_doi_journal %>%
-#   mutate(topic_category = mapply(categorize, journal_name, topic))
-# 
-# # Review results
-# alex_doi_journal %>% count(topic_category) %>% arrange(desc(n))
-# 
-# # write.csv(alex_doi_journal_categorized, "alex_doi_journal_categorized.csv", row.names = FALSE)
-# 
+# recombine field to the larger alex_doi_new_wide dataframe
+alex_doi_field <- alex_doi_field %>% 
+  select(field, doi, primary_location.source.id)
+
+alex_doi_new_wide <- alex_doi_new_wide %>% 
+  left_join(alex_doi_field)
+
+#### SubField Data ####
+
 
 # -----------------------------------------------------------------------------
 # Section 11: Dimensions data
