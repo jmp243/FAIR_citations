@@ -263,7 +263,7 @@ tf_mat_topic_trimmed <- tf_mat_topic_grouped %>%
 #### Section 9: Save output ####
 # -----------------------------------------------------------------------------
 
-write_csv(tf_mat_topic_trimmed, "TermDocFreq_long_collapsed.csv")
+# write_csv(tf_mat_topic_trimmed, "TermDocFreq_long_collapsed.csv")
 
 # -----------------------------------------------------------------------------
 #### Section 10: Journal title counts ####
@@ -298,8 +298,8 @@ journal_doi_counts <- alex_doi_topic %>%
 alex_doi_journal <- alex_doi_topic %>%
   select(journal_name, abstract, topic, collapsed_term, type) 
 
-
-write_csv(alex_doi_journal, "alex_doi_journal.csv")
+# Save to CSV
+# write_csv(alex_doi_journal, "alex_doi_journal.csv")
 
 alex_doi_topic %>%
   count(journal_name, sort = TRUE) %>%
@@ -341,8 +341,9 @@ alex_doi_domain <- rbind(phys_sci_domain, soci_sci_domain, health_sci_domain, li
 alex_doi_domain <- alex_doi_domain %>% 
   select(domain, doi, primary_location.source.id)
 
-alex_doi_new_wide <- alex_doi_new_wide %>% 
+alex_doi_new <- alex_doi_new %>% 
   left_join(alex_doi_domain)
+
 #### Field Data ####
 # read in field dataset
 comp_sci_field <- read_csv("field_data/comp_sci_field_openAlex.csv")
@@ -379,14 +380,62 @@ alex_doi_field <- rbind(comp_sci_field, mat_sci_field,
 alex_doi_field <- alex_doi_field %>% 
   select(field, doi, primary_location.source.id)
 
-alex_doi_new_wide <- alex_doi_new_wide %>% 
+alex_doi_new <- alex_doi_new %>% 
   left_join(alex_doi_field)
 
 #### SubField Data ####
+# read in subfield dataset
+AI_subfield <- read_csv("subfield_data/AI_subfield_openAlex.csv")
+eco_model_subfield <- read_csv("subfield_data/eco_model_subfield_openAlex.csv")
+ecology_subfield <- read_csv("subfield_data/ecology_subfield_openAlex.csv")
+global_planet_change_subfield <- read_csv("subfield_data/global_planet_change_subfield_openAlex.csv")
+info_sys_manage_subfield <- read_csv("subfield_data/info_sys_manage_subfield_openAlex.csv")
+info_sys_subfield <- read_csv("subfield_data/info_sys_subfield_openAlex.csv")
+mat_chem_subfield <- read_csv("subfield_data/mat_chem_subfield_openAlex.csv")
+molec_bio_subfield <- read_csv("subfield_data/molec_bio_subfield_openAlex.csv")
+pub_health_subfield <- read_csv("subfield_data/pub_health_subfield_openAlex.csv")
+radi_nuclear_med_subfield <- read_csv("subfield_data/radi_nuclear_med_subfield_openAlex.csv")
+
+# create a column for subfield for each of them
+AI_subfield$subfield <- "AI"
+eco_model_subfield$subfield <- "ecolog_model"
+ecology_subfield$subfield <- "ecology"
+global_planet_change_subfield$subfield <- "global_planet_change"
+info_sys_subfield$subfield <- "info_systems"
+info_sys_manage_subfield$subfield <- "info_sys_management"
+mat_chem_subfield$subfield <- "material_chemistry"
+molec_bio_subfield$subfield <- "molecular_biology"
+pub_health_subfield$subfield <- "public_health"
+radi_nuclear_med_subfield$subfield <- "radiation_nuclear_medicine"
+
+
+# combine subfields into one data frame
+alex_doi_subfield <- rbind(AI_subfield, eco_model_subfield,
+                           ecology_subfield, global_planet_change_subfield,
+                           info_sys_manage_subfield, info_sys_subfield,
+                           mat_chem_subfield, molec_bio_subfield,
+                           pub_health_subfield, radi_nuclear_med_subfield)
+
+# recombine subfield to the larger alex_doi_new_wide dataframe
+alex_doi_subfield <- alex_doi_subfield %>% 
+  select(subfield, doi, primary_location.source.id)
+
+alex_doi_new <- alex_doi_new %>% 
+  left_join(alex_doi_subfield)
+
+# move the columns to topics, domain, field, subfield 
+alex_doi_new <- alex_doi_new %>% 
+  relocate(domain, .after = title) %>% 
+  relocate(field, .after = domain) %>% 
+  relocate(subfield, .after = field)
+
+# -----------------------------------------------------------------------------
+# Section 11: Create DTM for term frequencies using domain and (sub)field
+# -----------------------------------------------------------------------------
 
 
 # -----------------------------------------------------------------------------
-# Section 11: Dimensions data
+# Section 12: Dimensions data
 # -----------------------------------------------------------------------------
 
 Dimensions_Publication_2026_a <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-01-28.csv", skip = 1)
