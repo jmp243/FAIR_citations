@@ -329,10 +329,10 @@ health_sci_domain <- read_csv("domain_data/health_sciences_domain_openAlex.csv")
 life_sci_domain <- read_csv("domain_data/life_sciences_domain_openAlex.csv")
 
 # create a column for domain for each of them
-phys_sci_domain$domain <- "phys_sci"
-soci_sci_domain$domain <- "soci_sci"
-health_sci_domain$domain <- "health_sci"
-life_sci_domain$domain <- "life_sci"
+phys_sci_domain$domain <- "phys sci"
+soci_sci_domain$domain <- "soci sci"
+health_sci_domain$domain <- "health sci"
+life_sci_domain$domain <- "life sci"
 
 # combine into one dataframe
 alex_doi_domain <- rbind(phys_sci_domain, soci_sci_domain, health_sci_domain, life_sci_domain)
@@ -358,16 +358,16 @@ mat_sci_field <- read_csv("field_data/mat_sci_field_openAlex.csv")
 agri_bio_sci_field <- read_csv("field_data/agri_bio_sci_field_openAlex.csv")
 
 # create a column for field for each of them
-comp_sci_field$field <- "comp_sci"
-soci_sci_field$field <- "soci_sci"
-mat_sci_field$field <- "material_sci"
+comp_sci_field$field <- "comp sci"
+soci_sci_field$field <- "soci sci"
+mat_sci_field$field <- "material sci"
 engineering_field$field <- "engineering"
 medicine_field$field <- "medicine"
-planet_sci_field$field <- "planetary_space_sci"
-biochem_field$field <- "biochem_genetics_molecular"
-agri_bio_sci_field$field <- "agricultural_bio_sci"
-decision_sci_field$field <- "decision_sci"
-env_sci_field$field <- "environmental_sci"
+planet_sci_field$field <- "planetary spacesci"
+biochem_field$field <- "biochem genetics molecular"
+agri_bio_sci_field$field <- "agricultural bio sci"
+decision_sci_field$field <- "decision sci"
+env_sci_field$field <- "environmental sci"
 
 # combine fields into one data frame
 alex_doi_field <- rbind(comp_sci_field, mat_sci_field,
@@ -398,15 +398,15 @@ radi_nuclear_med_subfield <- read_csv("subfield_data/radi_nuclear_med_subfield_o
 
 # create a column for subfield for each of them
 AI_subfield$subfield <- "AI"
-eco_model_subfield$subfield <- "ecolog_model"
+eco_model_subfield$subfield <- "ecolog model"
 ecology_subfield$subfield <- "ecology"
-global_planet_change_subfield$subfield <- "global_planet_change"
-info_sys_subfield$subfield <- "info_systems"
-info_sys_manage_subfield$subfield <- "info_sys_management"
-mat_chem_subfield$subfield <- "material_chemistry"
-molec_bio_subfield$subfield <- "molecular_biology"
-pub_health_subfield$subfield <- "public_health"
-radi_nuclear_med_subfield$subfield <- "radiation_nuclear_medicine"
+global_planet_change_subfield$subfield <- "global planet change"
+info_sys_subfield$subfield <- "info systems"
+info_sys_manage_subfield$subfield <- "info sys management"
+mat_chem_subfield$subfield <- "material chemistry"
+molec_bio_subfield$subfield <- "molecular biology"
+pub_health_subfield$subfield <- "public health"
+radi_nuclear_med_subfield$subfield <- "radiation nuclear medicine"
 
 
 # combine subfields into one data frame
@@ -494,6 +494,74 @@ idf_subfield <- alex_doi_new %>%
 
 idf_subfield
 
+# Year by year breakdown of journals
+library(DT)
+
+journal_hierarchy <- alex_doi_new %>%
+  filter(!is.na(domain), 
+         # !is.na(field), !is.na(subfield),
+         !is.na(publication_year),
+         !is.na(primary_location.source.display_name)) %>%
+  distinct(publication_year, domain, field, subfield,
+           primary_location.source.display_name) %>%
+  count(publication_year, domain, field, subfield,
+        name = "n_unique_journals") %>%
+  arrange(publication_year, domain, field, subfield)
+
+datatable(
+  journal_hierarchy,
+  filter   = "top",           # per-column filter boxes
+  rownames = FALSE,
+  colnames = c("Year", "Domain", "Field", "Subfield", "Unique Journals"),
+  options  = list(
+    pageLength  = 20,
+    scrollX     = TRUE,
+    autoWidth   = TRUE,
+    columnDefs  = list(list(className = "dt-center", targets = c(0, 4)))
+  )
+)
+
+# Plotly Sunburst visual
+library(plotly)
+library(dplyr)
+
+sunburst_data <- alex_doi_new %>%
+  filter(!is.na(domain), 
+         # !is.na(field), !is.na(subfield),
+         !is.na(primary_location.source.display_name)) %>%
+  distinct(domain, field, subfield,
+           primary_location.source.display_name) %>%
+  count(domain, field, subfield, name = "n_unique_journals")
+
+# Build ids/labels/parents for plotly sunburst
+domains  <- sunburst_data %>%
+  group_by(domain) %>%
+  summarise(n = sum(n_unique_journals)) %>%
+  transmute(ids = domain, labels = domain, parents = "", values = n)
+
+fields   <- sunburst_data %>%
+  group_by(domain, field) %>%
+  summarise(n = sum(n_unique_journals), .groups = "drop") %>%
+  transmute(ids = paste(domain, field, sep = " - "),
+            labels = field, parents = domain, values = n)
+
+subfields <- sunburst_data %>%
+  transmute(ids     = paste(domain, field, subfield, sep = " - "),
+            labels  = subfield,
+            parents = paste(domain, field, sep = " - "),
+            values  = n_unique_journals)
+
+sb <- bind_rows(domains, fields, subfields)
+
+plot_ly(
+  sb,
+  ids     = ~ids,
+  labels  = ~labels,
+  parents = ~parents,
+  values  = ~values,
+  type    = "sunburst",
+  branchvalues = "total"
+)
 # -----------------------------------------------------------------------------
 # Section 12: Dimensions data
 # -----------------------------------------------------------------------------
