@@ -17,7 +17,7 @@ library(readr)
 alex_doi_topic <- alex_doi_new %>%
   filter(
     publication_date >= as.Date("2016-03-15"),
-    publication_date <= as.Date("2026-03-15"),
+    publication_date <= as.Date("2026-03-16"),
     doi_clean != "10.1038/sdata.2016.18"
   ) %>%
   mutate(
@@ -433,15 +433,75 @@ alex_doi_new <- alex_doi_new %>%
 # Section 11: Create DTM for term frequencies using domain and (sub)field
 # -----------------------------------------------------------------------------
 
+# Term frequency per domain label
+tf_domain <- alex_doi_new %>%
+  filter(!is.na(domain)) %>%
+  count(domain, name = "tf") %>%
+  arrange(desc(tf))
+
+# IDF: log(N / df) where N = total docs, df = docs containing that domain
+N <- n_distinct(alex_doi_new$doi)
+
+idf_domain <- alex_doi_new %>%
+  filter(!is.na(domain)) %>%
+  distinct(doi, domain) %>%          # one row per doc-domain pair
+  count(domain, name = "df") %>%     # how many docs mention each domain
+  mutate(
+    idf    = log(N / df),
+    tf_idf = tf_domain$tf[match(domain, tf_domain$domain)] / N * idf
+  )
+
+idf_domain
+
+
+# Term frequency per field label
+tf_field <- alex_doi_new %>%
+  filter(!is.na(field)) %>%
+  count(field, name = "tfield") %>%
+  arrange(desc(tfield))
+
+# IDF: log(N / df) where N = total docs, df = docs containing that domain
+N <- n_distinct(alex_doi_new$doi)
+
+idf_field <- alex_doi_new %>%
+  filter(!is.na(field)) %>%
+  distinct(doi, field) %>%          
+  count(field, name = "df") %>%     
+  mutate(
+    idf    = log(N / df),
+    tf_idf = tf_field$tfield[match(field, tf_field$field)] / N * idf  # tfield not tf
+  )
+
+idf_field
+
+# Term frequency per subfield label
+tf_subfield <- alex_doi_new %>%
+  filter(!is.na(subfield)) %>%
+  count(subfield, name = "tsubfield") %>%
+  arrange(desc(tsubfield))
+
+# IDF: log(N / df) where N = total docs, df = docs containing that domain
+N <- n_distinct(alex_doi_new$doi)
+
+idf_subfield <- alex_doi_new %>%
+  filter(!is.na(subfield)) %>%
+  distinct(doi, subfield) %>%          
+  count(subfield, name = "df") %>%     
+  mutate(
+    idf    = log(N / df),
+    tf_idf = tf_subfield$tsubfield[match(subfield, tf_subfield$subfield)] / N * idf  # tfield not tf
+  )
+
+idf_subfield
 
 # -----------------------------------------------------------------------------
 # Section 12: Dimensions data
 # -----------------------------------------------------------------------------
 
-Dimensions_Publication_2026_a <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-01-28.csv", skip = 1)
-Dimensions_Publication_2026_b <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-00.csv", skip = 1)
-Dimensions_Publication_2026_c <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-32.csv", skip = 1)
-Dimensions_Publication_2026_d <- read_csv("dimensions_data/Dimensions-Publication-2026-03-06_19-02-49.csv", skip = 1)
+Dimensions_Publication_2026_a <- read_csv("dimensions_data/Dimensions-Publication-2026-04-07_19-44-57.csv", skip = 1)
+Dimensions_Publication_2026_b <- read_csv("dimensions_data/Dimensions-Publication-2026-04-07_19-45-51.csv", skip = 1)
+Dimensions_Publication_2026_c <- read_csv("dimensions_data/Dimensions-Publication-2026-04-07_19-46-14.csv", skip = 1)
+Dimensions_Publication_2026_d <- read_csv("dimensions_data/Dimensions-Publication-2026-04-07_19-47-22.csv", skip = 1)
 
 Dimensions_data <- bind_rows(
   Dimensions_Publication_2026_a,
