@@ -731,9 +731,24 @@ server <- function(input, output, session) {
       count(publication_year, domain)
     pal <- j_domain_pal()
 
+    # One row per year for the total-count labels above each bar
+    year_totals <- dat %>%
+      group_by(publication_year) %>%
+      summarise(year_total = sum(n), .groups = "drop")
+
     dat %>%
       ggplot(aes(x = publication_year, y = n, fill = domain)) +
       geom_col() +
+      geom_text(
+        data        = year_totals,
+        mapping     = aes(x = publication_year, y = year_total, label = year_total),
+        inherit.aes = FALSE,
+        vjust       = -0.4,
+        size        = 3.5
+      ) +
+      scale_x_continuous(
+        breaks = function(lims) seq(ceiling(lims[1]), floor(lims[2]), by = 1)
+      ) +
       scale_fill_manual(values = pal, name = "Domain") +
       labs(title = "Publications by Year", x = "Year", y = "Unique DOIs") +
       theme(legend.position = "bottom")
