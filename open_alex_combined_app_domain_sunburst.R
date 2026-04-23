@@ -21,10 +21,205 @@ library(DT)
 library(tibble)
 library(textmineR)
 library(stopwords)
+# connect to posit cloud connect
+library(rsconnect)
+library(countrycode)
+library(readr)
+library(openalexR)
+
+# read in CSV of the works citing FAIR2016
+citing_works <- read_csv("ten_yr_openalex_citation_corpus_2026-03-16.csv") # define to 3/15/2026
+
+# rename display_name as title
+citing_works$title <- citing_works$display_name
+
+# remove http and other signifiers to make doi's compatible
+citing_works <- citing_works %>% 
+  mutate(doi_clean = str_remove(doi, "https://doi.org/"))
+# remove the anti_dups from the larger dataset alex_doi_new
+# unique doi
+alex_doi <- citing_works %>% 
+  filter(!is.na(doi) & doi != "") %>% 
+  unique()
+
+# filter out works that were published before 2015
+alex_doi_new <- alex_doi %>% 
+  filter(publication_year > 2015)
+
+dups <- alex_doi_new %>%
+  group_by(title) %>%
+  filter(n() > 1) %>%
+  ungroup()
+
+table(dups$type)
+
+dups_api <- alex_doi %>%
+  group_by(title) %>%
+  filter(n() > 1) %>%
+  mutate(
+    has_accepted = any(version == "acceptedVersion"),
+    has_cites = any(cited_by_count > 0)
+  ) %>%
+  filter(has_accepted, has_cites) %>%
+  ungroup()
+
+## anti-join take out the dupes that are not the acceptedVersion
+anti_dups <- anti_join(dups_api, dups)
+
+# remove the anti_dups from the larger dataset alex_doi_new
+alex_doi_new <- alex_doi_new %>% anti_join(anti_dups, by = "id")
+
+alex_doi_new <- alex_doi_new  %>%
+  mutate(.row_id = row_number())
+
+country_wide <- alex_doi_new %>%
+  # Keep only the identifier and the countries column
+  select(.row_id, authorships.countries) %>%
+  # Split rows on "|" and clean
+  separate_rows(authorships.countries, sep = "\\|") %>%
+  mutate(
+    country = str_trim(authorships.countries),
+    country = toupper(country),         # normalize to upper case
+    country = na_if(country, "")        # drop empties
+  ) %>%
+  filter(!is.na(country)) %>%
+  distinct(.row_id, country) %>%        # avoid duplicate country per citing work
+  mutate(has_country = 1L) %>%          # indicator column
+  pivot_wider(
+    names_from = country,
+    values_from = has_country,
+    values_fill = 0
+  )
+# create a country code dictionary
+country_codes <- names(country_wide)
+
+# remove non‑country columns like ".row_id"
+country_codes <- country_codes[country_codes != ".row_id"]
+
+# create a country code dictionary using  ISO‑3166‑1 country code 
+country_dict <- data.frame(
+  code = country_codes,
+  country = countrycode(country_codes, origin = "iso2c", destination = "country.name")
+)
+
+country_dict$country[country_dict$code == "XK"] <- "Kosovo"
+# Join back to original if you want the rest of the columns:
+alex_doi_new_wide <- alex_doi_new %>%
+  left_join(country_wide, by = ".row_id") %>%
+  select(-.row_id)
+
 
 # -----------------------------------------------------------------------------
 # Shared: collapsed term matching
 # -----------------------------------------------------------------------------
+collapse_map <- list(
+  
+  # behavior
+  "behavior"         = c("behaviour", "behavioral", "behavioural"),
+  
+  # biology family
+  "biology"          = c("biological"),
+  "microbiology"     = c("microbial", "microbe", "microorganism"),
+  "neurobiology"     = c("neurobiological"),
+  "immunology"       = c("immunological", "immune", "immunity"),
+  "pharmacology"     = c("pharmacological", "pharmaceutical", "pharmacokinetics",
+                         "pharmacogenetics", "pharmacovigilance"),
+  "toxicology"       = c("toxic", "toxicity", "toxin"),
+  "epidemiology"     = c("epidemiological"),
+  "physiology"       = c("physiological"),
+  "morphology"       = c("morphological"),
+  "pathology"        = c("pathological", "pathogenesis", "pathophysiology",
+                         "pathogen"),
+  "ecology"          = c("ecological"),
+  "psychology"       = c("psychological", "psychosocial", "psychometric",
+                         "psychosomatic"),
+  "sociology"        = c("sociological", "societal"),
+  "geology"          = c("geological", "geologic"),
+  "geophysics"       = c("geophysical"),
+  "geochemistry"     = c("geochemical"),
+  "biochemistry"     = c("biochemical"),
+  "astronomy"        = c("astronomical"),
+  "astrophysics"     = c("astrophysical"),
+  "archaeology"      = c("archaeological"),
+  "anthropology"     = c("anthropological"),
+  "musicology"       = c("musicological"),
+  
+  # economy
+  "economy"          = c("economic", "economics"),
+  "finance"          = c("financial"),
+  
+  # technology
+  "technology"       = c("technological"),
+  "nanotechnology"   = c("nanomaterials", "nanoparticle", "nanostructure",
+                         "nanofabrication", "nanocluster", "nanonetworks",
+                         "nanoplatforms"),
+  
+  # chemistry / physics
+  "chemistry"        = c("chemical", "chemometric"),
+  "physics"          = c("physical"),
+  "thermodynamics"   = c("thermodynamic", "thermography"),
+  
+  # medicine / clinical
+  "medicine"         = c("medical", "medicinal"),
+  "diagnosis"        = c("diagnostic", "diagnostics"),
+  "surgery"          = c("surgical"),
+  "therapy"          = c("therapeutic", "theranostics"),
+  "nutrition"        = c("nutritional", "nutrient"),
+  "vaccination"      = c("vaccine"),
+  "infection"        = c("infectious", "infective"),
+  "inflammation"     = c("inflammatory", "neuroinflammation"),
+  "cancer"           = c("carcinoma", "carcinogen", "carcinogenesis", "oncology"),
+  "neuroscience"     = c("neurological", "neurology", "neurodegeneration",
+                         "neurodegenerative", "neurogenesis", "neuroplasticity",
+                         "neuropharmacology", "neuroethics", "neuroimaging",
+                         "neurovascular", "neurotransmitter", "neurodevelopmental",
+                         "neurogenetic"),
+  "cardiovascular"   = c("cardiac", "coronary", "cardiology"),
+  "pulmonary"        = c("respiratory"),
+  "genetics"         = c("genetic", "genetically", "genomics", "genomic"),
+  "metabolism"       = c("metabolic", "metabolomics"),
+  "rehabilitation"   = c("rehab"),
+  
+  # environment / earth science
+  "environment"      = c("environmental"),
+  "hydrology"        = c("hydrological", "hydrogeology"),
+  "sustainability"   = c("sustainable"),
+  "climate"          = c("climatic"),
+  
+  # social sciences
+  "education"        = c("educational"),
+  "politics"         = c("political"),
+  "statistics"       = c("statistical"),
+  "mathematics"      = c("mathematical"),
+  "philosophy"       = c("philosophical"),
+  "law"              = c("legal", "judicial"),
+  
+  # engineering / computing
+  "engineering"      = c("engineer"),
+  "computation"      = c("computational", "compute"),
+  "automation"       = c("automate"),
+  "optimization"     = c("optimal"),
+  "simulation"       = c("simulate"),
+  "manufacture"      = c("manufacturing", "fabrication"),
+  
+  # agriculture
+  "agriculture"      = c("agricultural", "agronomic", "agronomy"),
+  
+  # other
+  "development"      = c("developmental"),
+  "regulation"       = c("regulatory"),
+  "reproduction"     = c("reproductive"),
+  "organization"     = c("organizational"),
+  "communication"    = c("communications"),
+  "innovation"       = c("innovative"),
+  "integration"      = c("integrate"),
+  "distribution"     = c("distribute"),
+  "production"       = c("produce"),
+  "analysis"         = c("analytic", "analytics"),
+  "spectroscopy"     = c("spectrometry"),
+  "radiotherapy"     = c("radiopharmaceutical", "radiomics", "radiology",
+                         "radiography")
+)
 
 pattern_lookup <- bind_rows(
   tibble(
@@ -42,6 +237,114 @@ match_collapsed <- function(topic_str, patterns, targets) {
   if (is.na(idx)) topic_str else targets[idx]
 }
 
+#### Domain Data ####
+# OPEN Alex has 4 domains
+## read in 4 csv files 
+phys_sci_domain <- read_csv("domain_data/physical_science_domain_openAlex.csv")
+soci_sci_domain <- read_csv("domain_data/social_sciences_domain_openAlex.csv")
+health_sci_domain <- read_csv("domain_data/health_sciences_domain_openAlex.csv")
+life_sci_domain <- read_csv("domain_data/life_sciences_domain_openAlex.csv")
+
+# create a column for domain for each of them
+phys_sci_domain$domain <- "phys sci"
+soci_sci_domain$domain <- "soci sci"
+health_sci_domain$domain <- "health sci"
+life_sci_domain$domain <- "life sci"
+
+# combine into one dataframe
+alex_doi_domain <- rbind(phys_sci_domain, soci_sci_domain, health_sci_domain, life_sci_domain)
+
+# recombine it to the larger alex_doi_new_wide dataframe
+alex_doi_domain <- alex_doi_domain %>% 
+  select(domain, doi, primary_location.source.id)
+
+alex_doi_new <- alex_doi_new %>% 
+  left_join(alex_doi_domain)
+
+#### Field Data ####
+# read in field dataset
+comp_sci_field <- read_csv("field_data/comp_sci_field_openAlex.csv")
+biochem_field <- read_csv("field_data/biochem_field_openAlex.csv")
+env_sci_field <- read_csv("field_data/env_sci_field_openAlex.csv")
+decision_sci_field <- read_csv("field_data/decision_sci_field_openAlex.csv")
+medicine_field <- read_csv("field_data/medicine_field_openAlex.csv")
+planet_sci_field <- read_csv("field_data/planet_sci_field_openAlex.csv")
+engineering_field <- read_csv("field_data/engineering_field_openAlex.csv")
+soci_sci_field <- read_csv("field_data/soci_sci_field_openAlex.csv")
+mat_sci_field <- read_csv("field_data/mat_sci_field_openAlex.csv")
+agri_bio_sci_field <- read_csv("field_data/agri_bio_sci_field_openAlex.csv")
+
+# create a column for field for each of them
+comp_sci_field$field <- "comp sci"
+soci_sci_field$field <- "soci sci"
+mat_sci_field$field <- "material sci"
+engineering_field$field <- "engineering"
+medicine_field$field <- "medicine"
+planet_sci_field$field <- "planetary spacesci"
+biochem_field$field <- "biochem genetics molecular"
+agri_bio_sci_field$field <- "agricultural bio sci"
+decision_sci_field$field <- "decision sci"
+env_sci_field$field <- "environmental sci"
+
+# combine fields into one data frame
+alex_doi_field <- rbind(comp_sci_field, mat_sci_field,
+                        env_sci_field, decision_sci_field,
+                        engineering_field, medicine_field,
+                        soci_sci_field, agri_bio_sci_field,
+                        planet_sci_field, biochem_field)
+
+# recombine field to the larger alex_doi_new_wide dataframe
+alex_doi_field <- alex_doi_field %>% 
+  select(field, doi, primary_location.source.id)
+
+alex_doi_new <- alex_doi_new %>% 
+  left_join(alex_doi_field)
+
+#### SubField Data ####
+# read in subfield dataset
+AI_subfield <- read_csv("subfield_data/AI_subfield_openAlex.csv")
+eco_model_subfield <- read_csv("subfield_data/eco_model_subfield_openAlex.csv")
+ecology_subfield <- read_csv("subfield_data/ecology_subfield_openAlex.csv")
+global_planet_change_subfield <- read_csv("subfield_data/global_planet_change_subfield_openAlex.csv")
+info_sys_manage_subfield <- read_csv("subfield_data/info_sys_manage_subfield_openAlex.csv")
+info_sys_subfield <- read_csv("subfield_data/info_sys_subfield_openAlex.csv")
+mat_chem_subfield <- read_csv("subfield_data/mat_chem_subfield_openAlex.csv")
+molec_bio_subfield <- read_csv("subfield_data/molec_bio_subfield_openAlex.csv")
+pub_health_subfield <- read_csv("subfield_data/pub_health_subfield_openAlex.csv")
+radi_nuclear_med_subfield <- read_csv("subfield_data/radi_nuclear_med_subfield_openAlex.csv")
+
+# create a column for subfield for each of them
+AI_subfield$subfield <- "AI"
+eco_model_subfield$subfield <- "ecolog model"
+ecology_subfield$subfield <- "ecology"
+global_planet_change_subfield$subfield <- "global planet change"
+info_sys_subfield$subfield <- "info systems"
+info_sys_manage_subfield$subfield <- "info sys management"
+mat_chem_subfield$subfield <- "material chemistry"
+molec_bio_subfield$subfield <- "molecular biology"
+pub_health_subfield$subfield <- "public health"
+radi_nuclear_med_subfield$subfield <- "radiation nuclear medicine"
+
+
+# combine subfields into one data frame
+alex_doi_subfield <- rbind(AI_subfield, eco_model_subfield,
+                           ecology_subfield, global_planet_change_subfield,
+                           info_sys_manage_subfield, info_sys_subfield,
+                           mat_chem_subfield, molec_bio_subfield,
+                           pub_health_subfield, radi_nuclear_med_subfield)
+
+# recombine subfield to the larger alex_doi_new_wide dataframe
+alex_doi_subfield <- alex_doi_subfield %>% 
+  select(subfield, doi, primary_location.source.id)
+
+alex_doi_new <- alex_doi_new %>% 
+  left_join(alex_doi_subfield)
+
+# move the columns to topics, domain, field, subfield 
+alex_doi_new <- alex_doi_new %>% 
+  relocate(domain, .after = title) %>% 
+  relocate(field, .after = domain) %>% 
+  relocate(subfield, .after = field)
 # -----------------------------------------------------------------------------
 # Shared: date filter constants
 # -----------------------------------------------------------------------------
@@ -437,15 +740,17 @@ server <- function(input, output, session) {
   })
 
   output$j_sunburst_plot <- renderPlotly({
-    req(nrow(j_filtered()) > 0)
 
-    sunburst_data <- j_filtered() %>%
-      distinct(domain, field, subfield, journal_name_clean) %>%
+    sunburst_data <- alex_doi_new %>%
+      filter(!is.na(domain),
+             !is.na(primary_location.source.display_name)) %>%
+      distinct(domain, field, subfield,
+               primary_location.source.display_name) %>%
       count(domain, field, subfield, name = "n_unique_journals")
 
     domains <- sunburst_data %>%
       group_by(domain) %>%
-      summarise(n = sum(n_unique_journals), .groups = "drop") %>%
+      summarise(n = sum(n_unique_journals)) %>%
       transmute(ids = domain, labels = domain, parents = "", values = n)
 
     fields <- sunburst_data %>%
@@ -464,13 +769,15 @@ server <- function(input, output, session) {
 
     sb <- bind_rows(domains, fields, subfields)
 
-    plot_ly(sb,
-            ids          = ~ids,
-            labels       = ~labels,
-            parents      = ~parents,
-            values       = ~values,
-            type         = "sunburst",
-            branchvalues = "total")
+    plot_ly(
+      sb,
+      ids          = ~ids,
+      labels       = ~labels,
+      parents      = ~parents,
+      values       = ~values,
+      type         = "sunburst",
+      branchvalues = "total"
+    )
   })
 
   # ---------------------------------------------------------------------------
