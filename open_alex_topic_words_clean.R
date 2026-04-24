@@ -432,17 +432,20 @@ alex_doi_new <- alex_doi_new %>%
 # -----------------------------------------------------------------------------
 # Section 11: Create DTM for term frequencies using domain and (sub)field
 # -----------------------------------------------------------------------------
+library(dplyr)
+library(gt)
 
+### DOMAINS ###
 # Term frequency per domain label
-tf_domain <- alex_doi_new %>%
-  filter(!is.na(domain)) %>%
-  count(domain, name = "tf") %>%
-  arrange(desc(tf))
+# tf_domain <- alex_doi_new %>%
+#   filter(!is.na(domain)) %>%
+#   count(domain, name = "tf") %>%
+#   arrange(desc(tf))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
 
-idf_domain <- alex_doi_new %>%
+idf_domain_tbl <- alex_doi_new %>%
   filter(!is.na(domain)) %>%
   distinct(doi, domain) %>%          # one row per doc-domain pair
   count(domain, name = "df") %>%     # how many docs mention each domain
@@ -451,9 +454,77 @@ idf_domain <- alex_doi_new %>%
     tf_idf = tf_domain$tf[match(domain, tf_domain$domain)] / N * idf
   )
 
-idf_domain
+idf_domain_tbl
 
+# --- Column labels ---
+idf_domain_tbl %>%
+  arrange(desc(tf_idf)) %>%
+  gt() %>%     
+cols_label(
+  domain = "Domain",
+  df       = md("*df*"),
+  idf      = md("*IDF*"),
+  tf_idf   = md("*TF-IDF*")
+) %>%
+  
+  # --- Number formatting ---
+  fmt_number(columns = c(idf, tf_idf), decimals = 3) %>%
+  fmt_integer(columns = df) %>%
+  
+  # --- Nature/Science minimal border style ---
+  tab_style(
+    style = cell_borders(sides = c("top", "bottom"),
+                         color = "black", weight = px(1.5)),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "bottom",
+                         color = "black", weight = px(1.5)),
+    locations = cells_body(rows = nrow(idf_domain_tbl))
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "top",
+                         color = "black", weight = px(1.5)),
+    locations = cells_title()
+  ) %>%
+  opt_horizontal_padding(scale = 2) %>%
+  opt_vertical_padding(scale = 0.75) %>%
+  tab_options(
+    table.border.top.style        = "hidden",
+    table.border.bottom.style     = "hidden",
+    column_labels.border.top.style    = "solid",
+    column_labels.border.bottom.style = "solid",
+    column_labels.border.top.width    = px(1.5),
+    column_labels.border.bottom.width = px(1.5),
+    table_body.border.bottom.style    = "solid",
+    table_body.border.bottom.width    = px(1.5),
+    row.striping.include_table_body   = FALSE,
+    table.font.size  = px(11),
+    table.font.names = "Arial"
+  ) %>%
+  
+  # --- Title & note ---
+  tab_header(
+    title    = md("**Table 2.** TF-IDF scores for Domains citing FAIR data principles"),
+    subtitle = md("Domains ranked by TF-IDF score (*N* = total unique DOIs in corpus)")
+  ) %>%
+  tab_source_note(
+    source_note = md(
+      "*df*, document frequency (number of articles in domain); *IDF*, inverse document frequency = log(*N* / *df*); *TF-IDF*, term frequency–inverse document frequency."
+    )
+  ) %>%
+  
+  # --- Right-align numerics, left-align text ---
+  cols_align(align = "left",  columns = domain) %>%
+  cols_align(align = "right", columns = c(df, idf, tf_idf)) %>%
+  
+  # --- Bold the top row after sorting ---
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_body(rows = 1)
+  )
 
+### FIELDS ###
 # Term frequency per field label
 tf_field <- alex_doi_new %>%
   filter(!is.na(field)) %>%
@@ -463,7 +534,7 @@ tf_field <- alex_doi_new %>%
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
 
-idf_field <- alex_doi_new %>%
+idf_field_tbl <- alex_doi_new %>%
   filter(!is.na(field)) %>%
   distinct(doi, field) %>%          
   count(field, name = "df") %>%     
@@ -472,18 +543,89 @@ idf_field <- alex_doi_new %>%
     tf_idf = tf_field$tfield[match(field, tf_field$field)] / N * idf  # tfield not tf
   )
 
-idf_field
+idf_field_tbl
 
+
+
+idf_field_tbl %>%
+  arrange(desc(tf_idf)) %>%
+  gt() %>%
+  # --- Column labels ---
+  cols_label(
+    field = "Field",
+    df       = md("*df*"),
+    idf      = md("*IDF*"),
+    tf_idf   = md("*TF-IDF*")
+  ) %>%
+  
+  # --- Number formatting ---
+  fmt_number(columns = c(idf, tf_idf), decimals = 3) %>%
+  fmt_integer(columns = df) %>%
+  
+  # --- Nature/Science minimal border style ---
+  tab_style(
+    style = cell_borders(sides = c("top", "bottom"),
+                         color = "black", weight = px(1.5)),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "bottom",
+                         color = "black", weight = px(1.5)),
+    locations = cells_body(rows = nrow(idf_subfield_tbl))
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "top",
+                         color = "black", weight = px(1.5)),
+    locations = cells_title()
+  ) %>%
+  opt_horizontal_padding(scale = 2) %>%
+  opt_vertical_padding(scale = 0.75) %>%
+  tab_options(
+    table.border.top.style        = "hidden",
+    table.border.bottom.style     = "hidden",
+    column_labels.border.top.style    = "solid",
+    column_labels.border.bottom.style = "solid",
+    column_labels.border.top.width    = px(1.5),
+    column_labels.border.bottom.width = px(1.5),
+    table_body.border.bottom.style    = "solid",
+    table_body.border.bottom.width    = px(1.5),
+    row.striping.include_table_body   = FALSE,
+    table.font.size  = px(11),
+    table.font.names = "Arial"
+  ) %>%
+  
+  # --- Title & note ---
+  tab_header(
+    title    = md("**Table 3.** TF-IDF scores for fields citing FAIR data principles"),
+    subtitle = md("Fields ranked by TF-IDF score (*N* = total unique DOIs in corpus)")
+  ) %>%
+  tab_source_note(
+    source_note = md(
+      "*df*, document frequency (number of articles in field); *IDF*, inverse document frequency = log(*N* / *df*); *TF-IDF*, term frequency–inverse document frequency."
+    )
+  ) %>%
+  
+  # --- Right-align numerics, left-align text ---
+  cols_align(align = "left",  columns = field) %>%
+  cols_align(align = "right", columns = c(df, idf, tf_idf)) %>%
+  
+  # --- Bold the top row after sorting ---
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_body(rows = 1)
+  )
+
+### SUBFIELDS ###
 # Term frequency per subfield label
-tf_subfield <- alex_doi_new %>%
-  filter(!is.na(subfield)) %>%
-  count(subfield, name = "tsubfield") %>%
-  arrange(desc(tsubfield))
+# tf_field <- alex_doi_new %>%
+#   filter(!is.na(subfield)) %>%
+#   count(field, name = "tfield") %>%
+#   arrange(desc(tf_field))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
 
-idf_subfield <- alex_doi_new %>%
+idf_subfield_tbl <- alex_doi_new %>%
   filter(!is.na(subfield)) %>%
   distinct(doi, subfield) %>%          
   count(subfield, name = "df") %>%     
@@ -492,9 +634,78 @@ idf_subfield <- alex_doi_new %>%
     tf_idf = tf_subfield$tsubfield[match(subfield, tf_subfield$subfield)] / N * idf  # tfield not tf
   )
 
-idf_subfield
+idf_subfield_tbl
 
-# Year by year breakdown of journals
+
+idf_subfield_tbl %>%
+  arrange(desc(tf_idf)) %>%
+  gt() %>%
+  # --- Column labels ---
+  cols_label(
+    subfield = "Subfield",
+    df       = md("*df*"),
+    idf      = md("*IDF*"),
+    tf_idf   = md("*TF-IDF*")
+  ) %>%
+  
+  # --- Number formatting ---
+  fmt_number(columns = c(idf, tf_idf), decimals = 3) %>%
+  fmt_integer(columns = df) %>%
+  
+  # --- Nature/Science minimal border style ---
+  tab_style(
+    style = cell_borders(sides = c("top", "bottom"),
+                         color = "black", weight = px(1.5)),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "bottom",
+                         color = "black", weight = px(1.5)),
+    locations = cells_body(rows = nrow(idf_subfield_tbl))
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "top",
+                         color = "black", weight = px(1.5)),
+    locations = cells_title()
+  ) %>%
+  opt_horizontal_padding(scale = 2) %>%
+  opt_vertical_padding(scale = 0.75) %>%
+  tab_options(
+    table.border.top.style        = "hidden",
+    table.border.bottom.style     = "hidden",
+    column_labels.border.top.style    = "solid",
+    column_labels.border.bottom.style = "solid",
+    column_labels.border.top.width    = px(1.5),
+    column_labels.border.bottom.width = px(1.5),
+    table_body.border.bottom.style    = "solid",
+    table_body.border.bottom.width    = px(1.5),
+    row.striping.include_table_body   = FALSE,
+    table.font.size  = px(11),
+    table.font.names = "Arial"
+  ) %>%
+  
+  # --- Title & note ---
+  tab_header(
+    title    = md("**Table 1.** TF-IDF scores for subfields citing FAIR data principles"),
+    subtitle = md("Subfields ranked by TF-IDF score (*N* = total unique DOIs in corpus)")
+  ) %>%
+  tab_source_note(
+    source_note = md(
+      "*df*, document frequency (number of articles in subfield); *IDF*, inverse document frequency = log(*N* / *df*); *TF-IDF*, term frequency–inverse document frequency."
+    )
+  ) %>%
+  
+  # --- Right-align numerics, left-align text ---
+  cols_align(align = "left",  columns = subfield) %>%
+  cols_align(align = "right", columns = c(df, idf, tf_idf)) %>%
+  
+  # --- Bold the top row after sorting ---
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_body(rows = 1)
+  )
+
+    # Year by year breakdown of journals
 library(DT)
 
 journal_hierarchy <- alex_doi_new %>%
@@ -537,7 +748,8 @@ sunburst_data <- alex_doi_new %>%
 domains  <- sunburst_data %>%
   group_by(domain) %>%
   summarise(n = sum(n_unique_journals)) %>%
-  transmute(ids = domain, labels = domain, parents = "", values = n)
+  transmute(ids = domain, labels = domain, 
+            parents = "", values = n)
 
 fields   <- sunburst_data %>%
   group_by(domain, field) %>%
@@ -562,6 +774,51 @@ plot_ly(
   type    = "sunburst",
   branchvalues = "total"
 )
+# 
+# Volume and concentration — How many unique journals are citing FAIR? 
+# Are citations concentrated in a handful of journals or spread broadly? 
+# A small number of journals accounting for a large share of citations 
+# suggests a tight disciplinary core.
+
+ 
+# Disciplinary reach — Which fields are engaging with FAIR principles? 
+# This is essentially what your sunburst chart already visualizes — 
+# mapping journals to domains, fields, and subfields to see where FAIR has penetrated.
+ 
+# Growth patterns — Are the same journals citing FAIR consistently over time, 
+# or are new journals entering the conversation each year? This can signal 
+# whether adoption is deepening within existing communities or spreading to new ones.
+
+# Journal prestige/impact — Linking journal titles to impact factors, 
+# h-indices, or CiteScore values to assess whether high-impact venues are 
+# engaging with the work.
+
+# read in Scimagojr data
+library(readr)
+# scimagojr <- read_delim("scimagojr_data/scimagojr 2025.csv", 
+#                              delim = ";", escape_double = FALSE, trim_ws = TRUE)
+scimagojr <- read_delim(
+  "scimagojr_data/scimagojr 2025.csv",
+  delim          = ";",
+  locale         = locale(decimal_mark = ","),
+  show_col_types = FALSE
+)
+
+View(scimagojr)
+# subset scimagojr
+scimagojr_trim <- scimagojr %>% 
+  select(Title, Region, Categories, Areas, Overton, 
+         `H index`, `SJR Best Quartile`, `Citations / Doc. (2years)`,
+         `Total Refs.`, `Total Citations (3years)`, `Total Docs. (2025)`, 
+         `Total Docs. (3years)`, Rank
+         )
+
+
+# left join title to journal title
+alex_doi_new_journal <- alex_doi_new %>% 
+  left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
+
+
 # -----------------------------------------------------------------------------
 # Section 12: Dimensions data
 # -----------------------------------------------------------------------------
@@ -600,3 +857,5 @@ dtm_dim <- CreateDtm(
 )
 
 tf_mat_dim <- TermDocFreq(dtm_dim)
+
+
