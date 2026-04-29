@@ -793,8 +793,9 @@ plot_ly(
 # h-indices, or CiteScore values to assess whether high-impact venues are 
 # engaging with the work.
 
+#### SECTION with JOURNAL PRESTIGE ####
 # read in Scimagojr data
-library(readr)
+# library(readr)
 # scimagojr <- read_delim("scimagojr_data/scimagojr 2025.csv", 
 #                              delim = ";", escape_double = FALSE, trim_ws = TRUE)
 scimagojr <- read_delim(
@@ -849,19 +850,30 @@ alex_doi_new_journal <- alex_doi_new %>%
     by = "issn_key"
   )
 
+# table with all the journals and counts 
+n_journal <- n_distinct(alex_doi_new_journal$primary_location.source.display_name)
+
+journal_counts <- alex_doi_new_journal %>%
+  distinct(doi_clean, primary_location.source.display_name) %>% 
+  count(primary_location.source.display_name, name = "Count") %>%
+  select(primary_location.source.display_name, Count) %>% 
+  rename("Journal Title" = primary_location.source.display_name) %>% 
+  arrange(desc(Count))
+
+journal_counts
 # # # left join title to journal title
 # alex_doi_new_journal <- alex_doi_new %>%
 #   left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
 
 # See how many failed to match
 alex_doi_new_journal %>% 
-  filter(is.na(Rank)) %>% 
+  filter(is.na(`SJR Best Quartile`)) %>% 
   distinct(primary_location.source.display_name) %>% 
   nrow()
 
 # unmatched journals
 unmatched_journals <- alex_doi_new_journal %>% 
-  filter(is.na(Rank)) %>% 
+  filter(is.na(`SJR Best Quartile`)) %>% 
   distinct(primary_location.source.display_name) 
 # -----------------------------------------------------------------------------
 # Section 12: Dimensions data
