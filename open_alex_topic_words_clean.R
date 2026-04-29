@@ -317,7 +317,7 @@ alex_doi_topic %>%
 # Posted by linog, modified by community. See post 'Timeline' for change history
 # Retrieved 2026-04-07, License - CC BY-SA 4.0
 
-jstor <- readr::read_delim("JSTOR_Global_Archive_Primary_Source_Collection_2026-04-07.txt", delim = "\t")
+# jstor <- readr::read_delim("JSTOR_Global_Archive_Primary_Source_Collection_2026-04-07.txt", delim = "\t")
 # JSTOR's coverage is not great in the sciences
 
 #### Domain Data ####
@@ -437,10 +437,10 @@ library(gt)
 
 ### DOMAINS ###
 # Term frequency per domain label
-# tf_domain <- alex_doi_new %>%
-#   filter(!is.na(domain)) %>%
-#   count(domain, name = "tf") %>%
-#   arrange(desc(tf))
+tf_domain <- alex_doi_new %>%
+  filter(!is.na(domain)) %>%
+  count(domain, name = "tf") %>%
+  arrange(desc(tf))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
