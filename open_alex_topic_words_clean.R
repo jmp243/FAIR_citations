@@ -805,20 +805,64 @@ scimagojr <- read_delim(
 )
 
 View(scimagojr)
+
 # subset scimagojr
 scimagojr_trim <- scimagojr %>% 
-  select(Title, Region, Categories, Areas, Overton, 
+  select(Title, Region, Categories, Areas, Overton, Issn,
          `H index`, `SJR Best Quartile`, `Citations / Doc. (2years)`,
          `Total Refs.`, `Total Citations (3years)`, `Total Docs. (2025)`, 
          `Total Docs. (3years)`, Rank
-         )
+  )
 
 
-# left join title to journal title
-alex_doi_new_journal <- alex_doi_new %>% 
-  left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
+library(stringr)
 
+normalize <- function(x) {
+  x %>%
+    str_to_lower() %>%
+    str_remove_all("^the\\s+") %>%
+    str_remove_all("[^a-z0-9 ]") %>%
+    str_squish()
+}
 
+alex_clean    <- alex_doi_new %>% mutate(title_key = normalize(primary_location.source.display_name))
+scimago_clean <- scimagojr_trim    %>% mutate(title_key = normalize(Title))
+
+alex_doi_new_journal <- alex_clean %>%
+  left_join(scimago_clean, by = "title_key")
+
+# --- Pivot ISSN column into long format (one ISSN per row) ---
+scimagojr_issn <- scimagojr %>%
+  mutate(Issn = str_remove_all(Issn, "\\s")) %>%    # strip whitespace
+  separate_rows(Issn, sep = ",") %>%                 # one row per ISSN
+  filter(Issn != "", !is.na(Issn)) %>%               # drop blanks
+  mutate(Issn = str_squish(Issn))
+
+# --- Join on ISSN ---
+# OpenAlex typically stores ISSNs as "XXXX-XXXX" so normalise both sides
+normalize_issn <- function(x) str_remove_all(str_to_upper(x), "-")
+
+alex_doi_new_journal <- alex_doi_new %>%
+  mutate(issn_key = normalize_issn(primary_location.source.issn_l)) %>%
+  left_join(
+    scimagojr_issn %>% mutate(issn_key = normalize_issn(Issn)),
+    by = "issn_key"
+  )
+
+# # # left join title to journal title
+# alex_doi_new_journal <- alex_doi_new %>%
+#   left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
+
+# See how many failed to match
+alex_doi_new_journal %>% 
+  filter(is.na(Rank)) %>% 
+  distinct(primary_location.source.display_name) %>% 
+  nrow()
+
+# unmatched journals
+unmatched_journals <- alex_doi_new_journal %>% 
+  filter(is.na(Rank)) %>% 
+  distinct(primary_location.source.display_name) 
 # -----------------------------------------------------------------------------
 # Section 12: Dimensions data
 # -----------------------------------------------------------------------------
