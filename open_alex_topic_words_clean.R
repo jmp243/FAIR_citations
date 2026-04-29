@@ -525,11 +525,11 @@ cols_label(
   )
 
 ### FIELDS ###
-# Term frequency per field label
-tf_field <- alex_doi_new %>%
-  filter(!is.na(field)) %>%
-  count(field, name = "tfield") %>%
-  arrange(desc(tfield))
+# # Term frequency per field label
+# tf_field <- alex_doi_new %>%
+#   filter(!is.na(field)) %>%
+#   count(field, name = "tfield") %>%
+#   arrange(desc(tfield))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
@@ -571,7 +571,7 @@ idf_field_tbl %>%
   tab_style(
     style = cell_borders(sides = "bottom",
                          color = "black", weight = px(1.5)),
-    locations = cells_body(rows = nrow(idf_subfield_tbl))
+    locations = cells_body(rows = nrow(idf_field_tbl))
   ) %>%
   tab_style(
     style = cell_borders(sides = "top",
@@ -617,10 +617,10 @@ idf_field_tbl %>%
 
 ### SUBFIELDS ###
 # Term frequency per subfield label
-# tf_field <- alex_doi_new %>%
-#   filter(!is.na(subfield)) %>%
-#   count(field, name = "tfield") %>%
-#   arrange(desc(tf_field))
+tf_subfield <- alex_doi_new %>%
+  filter(!is.na(subfield)) %>%
+  count(subfield, name = "tf_subfield") %>%
+  arrange(desc(tf_subfield))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
@@ -631,7 +631,7 @@ idf_subfield_tbl <- alex_doi_new %>%
   count(subfield, name = "df") %>%     
   mutate(
     idf    = log(N / df),
-    tf_idf = tf_subfield$tsubfield[match(subfield, tf_subfield$subfield)] / N * idf  # tfield not tf
+    tf_idf = tf_subfield$tf_subfield[match(subfield, tf_subfield$subfield)] / N * idf 
   )
 
 idf_subfield_tbl
