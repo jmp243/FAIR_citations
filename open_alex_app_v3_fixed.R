@@ -564,44 +564,156 @@ server <- function(input, output, session) {
   })
 
   j_counts <- reactive({
+    
     top_journals <- j_filtered() %>%
       group_by(journal_name_clean) %>%
-      summarise(n_unique_doi = n_distinct(doi_clean), .groups = "drop") %>%
-      arrange(desc(n_unique_doi)) %>%
+      summarise(count = n_distinct(doi_clean), .groups = "drop") %>%
+      arrange(desc(count)) %>%
       slice_head(n = input$j_top_n) %>%
       pull(journal_name_clean)
-
+    
+    j_filtered() %>%
+      filter(journal_name_clean %in% top_journals) %>%
+      group_by(journal_name_clean) %>%
+      summarise(
+        count = n_distinct(doi_clean),
+        domain = paste(sort(unique(na.omit(domain))), collapse = "; "),
+        .groups = "drop"
+      ) %>%
+      arrange(desc(count)) %>%
+      rename(
+        `Journal Name` = journal_name_clean,
+        Domains = domain,
+        Count = count
+      )
+  })
+  # j_counts <- reactive({
+  #   top_journals <- j_filtered() %>%
+  #     group_by(journal_name_clean) %>%
+  #     summarise(n_unique_doi = n_distinct(doi_clean), .groups = "drop") %>%
+  #     arrange(desc(n_unique_doi)) %>%
+  #     slice_head(n = input$j_top_n) %>%
+  #     pull(journal_name_clean)
+  # 
+  #   j_filtered() %>%
+  #     filter(journal_name_clean %in% top_journals) %>%
+  #     group_by(journal_name_clean, domain) %>%
+  #     summarise(n_unique_doi = n_distinct(doi_clean), .groups = "drop")
+  # })
+  
+  j_plot_counts <- reactive({
+    
+    top_journals <- j_filtered() %>%
+      group_by(journal_name_clean) %>%
+      summarise(count = n_distinct(doi_clean), .groups = "drop") %>%
+      arrange(desc(count)) %>%
+      slice_head(n = input$j_top_n) %>%
+      pull(journal_name_clean)
+    
     j_filtered() %>%
       filter(journal_name_clean %in% top_journals) %>%
       group_by(journal_name_clean, domain) %>%
-      summarise(n_unique_doi = n_distinct(doi_clean), .groups = "drop")
+      summarise(
+        count = n_distinct(doi_clean),
+        .groups = "drop"
+      )
   })
-
+  
+  
   output$j_journal_plot <- renderPlot({
-    dat <- j_counts()
+    
+    dat <- j_plot_counts()
     pal <- j_domain_pal()
-
+    
     journal_order <- dat %>%
       group_by(journal_name_clean) %>%
-      summarise(total = sum(n_unique_doi), .groups = "drop") %>%
+      summarise(total = sum(count), .groups = "drop") %>%
       arrange(total) %>%
       pull(journal_name_clean)
-
+    
     dat %>%
-      mutate(journal_name_clean = factor(journal_name_clean, levels = journal_order)) %>%
-      ggplot(aes(x = journal_name_clean, y = n_unique_doi, fill = domain)) +
+      mutate(
+        journal_name_clean =
+          factor(journal_name_clean, levels = journal_order)
+      ) %>%
+      ggplot(
+        aes(
+          x = journal_name_clean,
+          y = count,
+          fill = domain
+        )
+      ) +
       geom_col() +
       scale_fill_manual(values = pal, name = "Domain") +
       coord_flip() +
-      labs(title = "Top Journals by Unique DOI", x = NULL, y = "Unique DOI Count") +
+      labs(
+        title = "Top Journals by Unique DOI",
+        x = NULL,
+        y = "Count"
+      ) +
       theme_minimal(base_size = 12) +
       theme(legend.position = "bottom")
   })
-
+  
+  # output$j_journal_plot <- renderPlot({
+  #   
+  #   dat <- j_counts()
+  #   
+  #   dat %>%
+  #     mutate(
+  #       `Journal Name` = factor(
+  #         `Journal Name`,
+  #         levels = rev(`Journal Name`)
+  #       )
+  #     ) %>%
+  #     ggplot(aes(x = `Journal Name`, y = Count)) +
+  #     geom_col(fill = "#4C78A8") +
+  #     coord_flip() +
+  #     labs(
+  #       title = "Top Journals by Unique DOI",
+  #       x = NULL,
+  #       y = "Count"
+  #     ) +
+  #     theme_minimal(base_size = 12)
+  #   
+  # })
+  # 
+  # output$j_journal_plot <- renderPlot({
+  #   dat <- j_counts()
+  #   pal <- j_domain_pal()
+  # 
+  #   journal_order <- dat %>%
+  #     group_by(journal_name_clean) %>%
+  #     summarise(total = sum(n_unique_doi), .groups = "drop") %>%
+  #     arrange(total) %>%
+  #     pull(journal_name_clean)
+  # 
+  #   dat %>%
+  #     mutate(journal_name_clean = factor(journal_name_clean, levels = journal_order)) %>%
+  #     ggplot(aes(x = journal_name_clean, y = n_unique_doi, fill = domain)) +
+  #     geom_col() +
+  #     scale_fill_manual(values = pal, name = "Domain") +
+  #     coord_flip() +
+  #     labs(title = "Top Journals by Unique DOI", x = NULL, y = "Unique DOI Count") +
+  #     theme_minimal(base_size = 12) +
+  #     theme(legend.position = "bottom")
+  # })
+  
   output$j_journal_table <- renderDT({
-    datatable(j_counts(), rownames = FALSE,
-              options = list(pageLength = 10, scrollX = TRUE))
+    datatable(
+      j_counts(),
+      rownames = FALSE,
+      options = list(
+        pageLength = 10,
+        scrollX = TRUE
+      )
+    )
   })
+  
+  # output$j_journal_table <- renderDT({
+  #   datatable(j_counts(), rownames = FALSE,
+  #             options = list(pageLength = 10, scrollX = TRUE))
+  # })
 
   output$j_year_plot <- renderPlot({
     dat <- j_filtered() %>%
