@@ -301,13 +301,15 @@ alex_doi_journal <- alex_doi_topic %>%
 # Save to CSV
 # write_csv(alex_doi_journal, "alex_doi_journal.csv")
 
-alex_doi_topic %>%
-  count(journal_name, sort = TRUE) %>%
-  slice_head(n = 30) %>%
-  ggplot(aes(x = reorder(journal_name, n), y = n)) +
-  geom_col() +
-  coord_flip() +
-  labs(title = "Top 30 Journals", x = "Journal", y = "Count")
+# # graph
+
+# alex_doi_topic %>%
+#   count(journal_name, sort = TRUE) %>%
+#   slice_head(n = 30) %>%
+#   ggplot(aes(x = reorder(journal_name, n), y = n)) +
+#   geom_col() +
+#   coord_flip() +
+#   labs(title = "Top 30 Journals", x = "Journal", y = "Count")
 
 # more cleaning steps for the journals
 # # scraping data from JSTOR for organized journal discipline lists
@@ -429,6 +431,9 @@ alex_doi_new <- alex_doi_new %>%
   relocate(field, .after = domain) %>% 
   relocate(subfield, .after = field)
 
+# write csv
+write.csv(alex_doi_new, file = "output_data/alex_doi_new.csv")
+
 # -----------------------------------------------------------------------------
 # Section 11: Create DTM for term frequencies using domain and (sub)field
 # -----------------------------------------------------------------------------
@@ -526,10 +531,10 @@ cols_label(
 
 ### FIELDS ###
 # # Term frequency per field label
-# tf_field <- alex_doi_new %>%
-#   filter(!is.na(field)) %>%
-#   count(field, name = "tfield") %>%
-#   arrange(desc(tfield))
+tf_field <- alex_doi_new %>%
+  filter(!is.na(field)) %>%
+  count(field, name = "tfield") %>%
+  arrange(desc(tfield))
 
 # IDF: log(N / df) where N = total docs, df = docs containing that domain
 N <- n_distinct(alex_doi_new$doi)
@@ -706,6 +711,11 @@ idf_subfield_tbl %>%
   )
 
     # Year by year breakdown of journals
+
+# Disciplinary reach — Which fields are engaging with FAIR principles? 
+# This is essentially what your sunburst chart already visualizes — 
+# mapping journals to domains, fields, and subfields to see where FAIR has penetrated.
+
 library(DT)
 
 journal_hierarchy <- alex_doi_new %>%
@@ -772,19 +782,17 @@ plot_ly(
   parents = ~parents,
   values  = ~values,
   type    = "sunburst",
-  branchvalues = "total"
+  branchvalues = "remainder"
+  # branchvalues = "total"
 )
+
 # 
 # Volume and concentration — How many unique journals are citing FAIR? 
 # Are citations concentrated in a handful of journals or spread broadly? 
 # A small number of journals accounting for a large share of citations 
 # suggests a tight disciplinary core.
 
- 
-# Disciplinary reach — Which fields are engaging with FAIR principles? 
-# This is essentially what your sunburst chart already visualizes — 
-# mapping journals to domains, fields, and subfields to see where FAIR has penetrated.
- 
+
 # Growth patterns — Are the same journals citing FAIR consistently over time, 
 # or are new journals entering the conversation each year? This can signal 
 # whether adoption is deepening within existing communities or spreading to new ones.
@@ -805,7 +813,7 @@ scimagojr <- read_delim(
   show_col_types = FALSE
 )
 
-View(scimagojr)
+# View(scimagojr)
 
 # subset scimagojr
 scimagojr_trim <- scimagojr %>% 
@@ -850,8 +858,11 @@ alex_doi_new_journal <- alex_doi_new %>%
     by = "issn_key"
   )
 
-# table with all the journals and counts 
-n_journal <- n_distinct(alex_doi_new_journal$primary_location.source.display_name)
+# write csv
+write.csv(alex_doi_new_journal, file = "output_data/alex_doi_new_journal.csv")
+
+# # table with all the journals and counts 
+# n_journal <- n_distinct(alex_doi_new_journal$primary_location.source.display_name)
 
 journal_counts <- alex_doi_new_journal %>%
   distinct(doi_clean, primary_location.source.display_name) %>% 
@@ -860,7 +871,53 @@ journal_counts <- alex_doi_new_journal %>%
   rename("Journal Title" = primary_location.source.display_name) %>% 
   arrange(desc(Count))
 
-journal_counts
+journal_counts #1580 with 2 or more
+
+# interactive graph
+library(dplyr)
+library(tidyr)
+
+journal_year_counts <- alex_doi_new_journal %>%
+  filter(!is.na(primary_location.source.display_name),
+         !is.na(publication_year)) %>%
+  distinct(
+    doi_clean,
+    primary_location.source.display_name,
+    publication_year,
+    `SJR Best Quartile`
+    # `H index`
+    # domain
+  ) %>%
+  count(
+    primary_location.source.display_name,
+    publication_year,
+    `SJR Best Quartile`,
+    # `H index`,
+    # domain,
+    name = "Citations"
+  ) %>%
+  rename(
+    `Journal Title` = primary_location.source.display_name,
+    Year = publication_year
+  ) %>%
+  arrange(`Journal Title`, Year)
+
+library(DT)
+
+datatable(
+  journal_year_counts,
+  extensions = c("Buttons"),
+  options = list(
+    pageLength = 10,
+    autoWidth = TRUE,
+    dom = "Bfrtip",
+    buttons = c("copy", "csv", "excel"),
+    order = list(list(0, "asc"), list(1, "asc"))
+  ),
+  filter = "top",
+  rownames = FALSE
+)
+
 # # # left join title to journal title
 # alex_doi_new_journal <- alex_doi_new %>%
 #   left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
