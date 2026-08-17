@@ -1,0 +1,61 @@
+---
+title: "Open_alex_static_visuals"
+format: html
+editor: visual
+---
+Sunburst chart
+August 17, 2026 
+modified after using a new dataset that merged from open alex, downloaded August 7, 2026
+
+create tables with this information
+```{r}
+
+```
+
+
+```{r}
+# Plotly Sunburst visual
+library(plotly)
+library(dplyr)
+
+sunburst_data <- alex_doi_new1 %>%
+  filter(!is.na(Domain), 
+         # !is.na(field), !is.na(subfield),
+         !is.na(primary_location.source.display_name)) %>%
+  distinct(Domain, Field, Subfield,
+           primary_location.source.display_name) %>%
+  count(Domain, Field, Subfield, name = "n_unique_journals")
+
+# Build ids/labels/parents for plotly sunburst
+domains  <- sunburst_data %>%
+  group_by(Domain) %>%
+  summarise(n = sum(n_unique_journals)) %>%
+  transmute(ids = Domain, labels = Domain, 
+            parents = "", values = n)
+
+fields   <- sunburst_data %>%
+  group_by(Domain, Field) %>%
+  summarise(n = sum(n_unique_journals), .groups = "drop") %>%
+  transmute(ids = paste(Domain, Field, sep = " - "),
+            labels = Field, parents = Domain, values = n)
+
+subfields <- sunburst_data %>%
+  transmute(ids     = paste(Domain, Field, Subfield, sep = " - "),
+            labels  = Subfield,
+            parents = paste(Domain, Field, sep = " - "),
+            values  = n_unique_journals)
+
+sb <- bind_rows(domains, fields, subfields)
+
+plot_ly(
+  sb,
+  ids     = ~ids,
+  labels  = ~labels,
+  parents = ~parents,
+  values  = ~values,
+  type    = "sunburst",
+  # branchvalues = "remainder"
+  branchvalues = "total"
+)
+```
+
