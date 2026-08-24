@@ -3,12 +3,96 @@ title: "Open_alex_static_visuals"
 format: html
 editor: visual
 ---
-Sunburst chart
-August 17, 2026 
-modified after using a new dataset that merged from open alex, downloaded August 7, 2026
+
+Sunburst chart August 17, 2026 modified after using a new dataset that merged from open alex, downloaded August 7, 2026
 
 create tables with this information
+
 ```{r}
+library(DT)
+
+journal_hierarchy <- alex_doi_new1 %>%
+  filter(!is.na(Domain), 
+         # !is.na(field), !is.na(subfield),
+         !is.na(publication_year),
+         !is.na(primary_location.source.display_name)) %>%
+  distinct(publication_year, Domain, Field, Subfield,
+           primary_location.source.display_name) %>%
+  count(publication_year, Domain, Field, Subfield,
+        name = "n_unique_journals") %>%
+  arrange(publication_year, Domain, Field, Subfield)
+
+datatable(
+  journal_hierarchy,
+  filter   = "top",           # per-column filter boxes
+  rownames = FALSE,
+  colnames = c("Year", "Domain", "Field", "Subfield", "Unique Journals"),
+  options  = list(
+    pageLength  = 20,
+    scrollX     = TRUE,
+    autoWidth   = TRUE,
+    columnDefs  = list(list(className = "dt-center", targets = c(0, 4)))
+  )
+)
+
+```
+clean up the names of domain, field, subfield
+```{r}
+# Summary table grouped by the unique DOI
+domain_summary <- alex_doi_new1 %>%
+  filter(Domain !="") %>% 
+  group_by(Domain) %>%
+  summarise(
+    unique_dois_count = n_distinct(doi, na.rm = TRUE),
+    unique_field_count = n_distinct(Field, na.rm = TRUE),
+    unique_subfield_count = n_distinct(Subfield, na.rm = TRUE)
+  )
+
+
+# Print the resulting table
+print(domain_summary)
+```
+
+```{r}
+# Create a flattened hierarchical table
+sunburst_table <- alex_doi_new1 %>%
+  group_by(Domain, Field, Subfield) %>%
+  summarise(
+    doi_count = n_distinct(doi, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # Sort from top tier down to make the hierarchy easy to read
+  arrange(Domain, Field, Subfield)
+
+print(sunburst_table)
+```
+
+```{r}
+# Create a clean summary table
+domain_counts <- alex_doi_new1 %>%
+  group_by(Domain) %>%
+  summarise(
+    doi_count = n_distinct(doi, na.rm = TRUE),
+    .groups = "drop",
+    field_count = n_distinct(Field),  # Counts unique schools
+    subfield_count = n()                                   # Counts total sports rows
+  )
+
+grid_counts <- alex_doi_new1 %>%
+  count(Field, Subfield) %>%
+  pivot_wider(names_from = Subfield, values_from = n, values_fill = 0)
+
+print(grid_counts)
+```
+
+# attempt a dendogram
+```{r}
+# Libraries
+library(ggraph)
+library(igraph)
+library(tidyverse)
+theme_set(theme_void())
+
 
 ```
 
@@ -22,9 +106,127 @@ sunburst_data <- alex_doi_new1 %>%
   filter(!is.na(Domain), 
          # !is.na(field), !is.na(subfield),
          !is.na(primary_location.source.display_name)) %>%
+  distinct(Domain, Field, 
+           # Subfield,
+           primary_location.source.display_name) %>%
+  count(Domain, Field, name = "n_unique_journals") # took out Subfield,
+
+# Build ids/labels/parents for plotly sunburst
+domains  <- sunburst_data %>%
+  group_by(Domain) %>%
+  summarise(n = sum(n_unique_journals)) %>%
+  transmute(ids = Domain, labels = Domain, 
+            parents = "", values = n)
+
+fields   <- sunburst_data %>%
+  group_by(Domain, Field) %>%
+  summarise(n = sum(n_unique_journals), .groups = "drop") %>%
+  transmute(ids = paste(Domain, Field, sep = " - "),
+            labels = Field, parents = Domain, values = n)
+
+# subfields <- sunburst_data %>%
+#   transmute(ids     = paste(Domain, Field, Subfield, sep = " - "),
+#             labels  = Subfield,
+#             parents = paste(Domain, Field, sep = " - "),
+#             values  = n_unique_journals)
+
+sb <- bind_rows(domains, fields) # , subfields
+
+plot_ly(
+  sb,
+  ids     = ~ids,
+  labels  = ~labels,
+  parents = ~parents,
+  values  = ~values,
+  type    = "sunburst",
+  branchvalues = "remainder"
+  # branchvalues = "total"
+)
+```
+
+```{r}
+table(alex_doi_new1$Domain)
+```
+
+make a publishable table asked google ai with generic code august 20, 2026
+```{r}
+library(gtsummary)
+library(gt)
+
+# Generate the table including unclassified (NA) values
+# (Replacing your original command with an explicit useNA argument)
+domain_table <- table(alex_doi_new1$Domain, useNA = "ifany")
+
+# 2. Convert the table into a clean data frame for formatting
+table_df <- as.data.frame(domain_table)
+colnames(table_df) <- c("Domain", "Frequency")
+
+# 3. Clean up the "unclassified" label if it appears as <NA>
+table_df$Domain <- as.character(table_df$Domain)
+table_df$Domain[is.na(table_df$Domain)] <- "Unclassified"
+
+domain_freq_table <- table_df|> 
+  arrange(desc(Frequency)) |> 
+  gt() |> 
+  cols_align(align = "left", columns = Domain) %>%
+  cols_align(align = "right", columns = Frequency) %>%
+    # wt  = "Weight (1000 lbs)"
+  tab_header(
+    title = "Research Domains and the Unique DOI's",
+    subtitle = "Base on OpenAlex"
+  ) 
+
+# 4. Build and style the professional table
+domain_freq_table <- table_df %>%
+  gt() %>%
+  # Align text left and numbers right
+  cols_align(align = "left", columns = Domain) %>%
+  cols_align(align = "right", columns = Frequency) %>%
+  cols_label(
+    Domain= "Domain",
+    Frequency  = "Unique DOI's",
+  ) 
+  # # Bold the column headers
+  # tab_style(
+  #   style = cell_text(weight = "bold"),
+  #   locations = cells_column_labels()
+  # )
+
+# Print the table
+domain_freq_table
+# countries_doi_count <- df_long  %>%
+#   group_by(country_name) %>%
+#   summarise(unique_items = n_distinct(doi_clean), .groups = 'drop')
+# 
+# most_active_countries <- countries_doi_count %>% 
+#   filter(unique_items >= 1000)
+# # Create a publication-ready table 1
+# 
+# most_active_countries_table <- most_active_countries|> 
+#   arrange(desc(unique_items)) |> 
+#   gt() |> 
+#   cols_label(
+#     country_name = "Country of Author(s)",
+#     unique_items  = "Unique DOI's",
+#     # wt  = "Weight (1000 lbs)"
+#   ) |> 
+#   tab_header(
+#     title = "Top 10 Most Active Countries of Authorship",
+#     subtitle = "Base on OpenAlex"
+#   ) 
+gtsave(domain_freq_table, filename = "visual_output/domain_freq_table.docx")
+```
+
+
+
+```{r}
+sunburst_data <- alex_doi_new1 %>%
+  filter(!is.na(Domain), 
+         # !is.na(field), !is.na(subfield),
+         !is.na(primary_location.source.display_name)) %>%
   distinct(Domain, Field, Subfield,
            primary_location.source.display_name) %>%
-  count(Domain, Field, Subfield, name = "n_unique_journals")
+  count(Domain, Field, Subfield, name = "n_unique_journals") # took out Subfield,
 
 # Build ids/labels/parents for plotly sunburst
 domains  <- sunburst_data %>%
@@ -45,7 +247,7 @@ subfields <- sunburst_data %>%
             parents = paste(Domain, Field, sep = " - "),
             values  = n_unique_journals)
 
-sb <- bind_rows(domains, fields, subfields)
+sb <- bind_rows(domains, fields, subfields) # , subfields
 
 plot_ly(
   sb,
@@ -54,8 +256,522 @@ plot_ly(
   parents = ~parents,
   values  = ~values,
   type    = "sunburst",
-  # branchvalues = "remainder"
-  branchvalues = "total"
+  branchvalues = "remainder"
+  # branchvalues = "total"
 )
+```
+
+
+working on a table with more fine grained analysis
+Using Claude.ai Sonnet 5 Medium on August 18 to make the tree visual but will not be using it for the final paper
+```{r}
+# install.packages(c("igraph", "ggraph"))
+library(igraph)
+library(ggraph)
+library(dplyr)
+
+# 1. Start from the flattened summary (lowercase columns, per earlier fix)
+# sunburst_table <- alex_doi_new1 %>%
+#   filter(!is.na(doi)) %>%
+#   group_by(Domain, Field, Subfield) %>%
+#   summarise(doi_count = n_distinct(doi), .groups = "drop") %>%
+#   arrange(Domain, Field, Subfield)
+
+sunburst_table <- alex_doi_new1 %>%
+  filter(!is.na(doi)) %>%
+  mutate(
+    Domain   = coalesce(Domain,   "Unclassified"),
+    Field    = coalesce(Field,    "Unclassified"),
+    Subfield = coalesce(Subfield, "Unclassified")
+  ) %>%
+  group_by(Domain, Field, Subfield) %>%
+  summarise(doi_count = n_distinct(doi), .groups = "drop") %>%
+  arrange(Domain, Field, Subfield)
+
+
+# 2. Build unique IDs at each level so identically-named
+#    fields/subfields under different domains don't collide
+nodes_domain <- sunburst_table %>%
+  distinct(Domain) %>%
+  transmute(id = Domain, label = Domain, level = "Domain")
+
+nodes_field <- sunburst_table %>%
+  distinct(Domain, Field) %>%
+  transmute(id = paste(Domain, Field, sep = " || "),
+            label = Field, level = "Field")
+
+nodes_subfield <- sunburst_table %>%
+  distinct(Domain, Field, Subfield) %>%
+  left_join(
+    sunburst_table %>% group_by(Domain, Field, Subfield) %>%
+      summarise(doi_count = sum(doi_count), .groups = "drop"),
+    by = c("Domain", "Field", "Subfield")
+  ) %>%
+  transmute(id = paste(Domain, Field, Subfield, sep = " || "),
+            label = Subfield, level = "Subfield", doi_count)
+
+# 3. Edge list: Root -> Domain -> Field -> Subfield
+edges <- bind_rows(
+  sunburst_table %>% distinct(Domain) %>%
+    transmute(from = "All Publications", to = Domain),
+  sunburst_table %>% distinct(Domain, Field) %>%
+    transmute(from = Domain, to = paste(Domain, Field, sep = " || ")),
+  sunburst_table %>% distinct(Domain, Field, Subfield) %>%
+    transmute(from = paste(Domain, Field, sep = " || "),
+              to   = paste(Domain, Field, Subfield, sep = " || "))
+)
+
+# 4. Node table (root + all levels), with doi_count for sizing leaves
+nodes <- bind_rows(
+  tibble(id = "All Publications", label = "All Publications",
+         level = "Root", doi_count = NA_real_),
+  nodes_domain    %>% mutate(doi_count = NA_real_),
+  nodes_field     %>% mutate(doi_count = NA_real_),
+  nodes_subfield
+) %>% distinct(id, .keep_all = TRUE)
+
+# 5. Build graph and plot as a tidy (Reingold-Tilford) tree
+g <- graph_from_data_frame(edges, vertices = nodes, directed = TRUE)
+
+ggraph(g, layout = "tree") +
+  geom_edge_diagonal(color = "grey70", width = 0.4) +
+  geom_node_point(aes(size = doi_count, color = level),
+                   na.rm = TRUE) +
+  geom_node_text(aes(label = label, filter = level != "Subfield"),
+                  size = 3, fontface = "bold", repel = TRUE) +
+  geom_node_text(aes(label = label, filter = level == "Subfield"),
+                  size = 2.3, angle = 60, hjust = 0, repel = TRUE) +
+    # geom_node_text(aes(label = label, filter = level == "Subfield"),
+    #              size = 2.3, angle = 60, hjust = 0,
+    #              repel = TRUE, max.overlaps = Inf) +
+  scale_color_manual(values = c(Root = "grey30", Domain = "#2c7fb8",
+                                 Field = "#41b6c4", Subfield = "#a1dab4")) +
+  scale_size_continuous(range = c(1, 8), guide = "none") +
+  coord_flip() +
+  scale_y_reverse() +
+  theme_void() +
+  theme(legend.position = "bottom") +
+  labs(color = "Level")
+```
+
+Tidy table
+```{r}
+library(dplyr)
+library(tidyr)
+
+# Helper: build "name (count); name (count); ..." for any parent -> child pairing
+list_count_by <- function(data, parent_col, child_col) {
+  data %>%
+    filter(!is.na(doi), !is.na({{ parent_col }}), !is.na({{ child_col }})) %>%
+    group_by({{ parent_col }}, {{ child_col }}) %>%
+    summarise(doi_count = n_distinct(doi), .groups = "drop") %>%
+    arrange({{ parent_col }}, desc(doi_count)) %>%
+    group_by({{ parent_col }}) %>%
+    summarise(
+      n_items = n(),
+      items   = paste0({{ child_col }}, " (", doi_count, ")", collapse = "; "),
+      .groups = "drop"
+    )
+}
+
+# Domain -> Field summary
+field_summary <- alex_doi_new1 %>%
+  list_count_by(Domain, Field) %>%
+  rename(n_fields = n_items, fields_list = items)
+
+# Domain -> Subfield summary (flattened straight from domain, skipping field)
+subfield_summary <- alex_doi_new1 %>%
+  list_count_by(Domain, Subfield) %>%
+  rename(n_subfields = n_items, subfields_list = items)
+
+# Combine into one table: Domain | # Fields | Fields (list+count) | # Subfields | Subfields (list+count)
+domain_overview <- alex_doi_new1 %>%
+  distinct(Domain) %>%
+  filter(!is.na(Domain)) %>%
+  left_join(field_summary,    by = "Domain") %>%
+  left_join(subfield_summary, by = "Domain") %>%
+  arrange(Domain)
+
+print(domain_overview, width = Inf)
+```
+more easily rendered table
+```{r}
+ datatable(domain_overview, options = list(
+    columnDefs = list(list(targets = c(2, 4), render = JS(
+      "function(data, type, row) { return type === 'display' && data.length > 60 ? data.substr(0, 57) + '...' : data; }"
+    )))
+  ))
+
+
+```
+
+Tree Map
+I just asked treemap in R to Google and google ai generated some generic options using cars data 8/18 
+```{r}
+# Plot the treemap
+library(treemap)
+
+treemap(sunburst_table,
+        index = c("Domain", "Field", "Subfield"), # Hierarchical levels
+        vSize = "doi_count",                        # Rectangle sizes
+        type = "index",                         # How rectangles are colored
+        palette = "Set2",                       # Color palette
+        title = "Distribution of Publications"         # Chart title
+)
+```
+
+
+Reading google ai mode on generic query on August 18, 2026
+```{r}
+# 1. Install and load packages
+# install.packages(c("ggplot2", "treemapify"))
+library(ggplot2)
+library(treemapify)
+
+# 2. Use the same data frame from Method 1
+# 3. Build the ggplot treemap
+ggplot(sunburst_table, aes(area = doi_count, fill = Domain, label = Subfield, subgroup = Domain)) +
+  geom_treemap() +
+  # Add white text labels for the sub-categories
+  geom_treemap_text(colour = "white", place = "center", reflow = TRUE) +
+  # Draw a thick border around the main categories
+  geom_treemap_subgroup_border(colour = "black", size = 0.5) +
+  labs(title = "Distribution of Publications by Domain and Subfields")
+```
+
+
+
+by domain, field
+```{r}
+sunburst_table2 <- alex_doi_new1 %>%
+  filter(!is.na(doi)) %>%
+  mutate(
+    Domain   = coalesce(Domain,   "Unclassified"),
+    Field    = coalesce(Field,    "Unclassified"),
+    # Subfield = coalesce(Subfield, "Unclassified")
+  ) %>%
+  group_by(Domain, Field) %>%
+  summarise(doi_count = n_distinct(doi), .groups = "drop") %>%
+  arrange(Domain, Field)
+
+# 2. Use the same data frame from Method 1
+# 3. Build the ggplot treemap
+ggplot(sunburst_table2, aes(area = doi_count, fill = Domain, label = Field, subgroup = Domain)) +
+  geom_treemap() +
+  # scale_fill_brewer(palette = 'Set3') +
+  # Add white text labels for the sub-categories
+  geom_treemap_text(colour = "black", place = "center", reflow = TRUE) +
+  # Draw a thick border around the main categories
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 2) +
+  labs(title = "Distribution of Publications by Domain and Field")
+
+# read https://stackoverflow.com/questions/76186672/how-to-change-colors-on-treemap
+```
+countries represented
+```{r}
+# alex_doi_new_wide
+DATE_MIN   <- as.Date("2016-03-15")
+DATE_MAX   <- as.Date("2026-03-16")
+EXCL_DOI   <- "10.1038/sdata.2016.18"
+
+code_col <- intersect(c("code", "iso2", "iso2c", "country_code"), names(country_dict))
+name_col <- intersect(c("name", "country_name", "country", "label"),  names(country_dict))
+
+if (length(code_col) == 0) stop("country_dict must have a code column.")
+country_dict_std <- if (length(name_col) == 0) {
+  country_dict %>% rename(code = !!code_col[1]) %>% mutate(name = code)
+} else {
+  country_dict %>% rename(code = !!code_col[1], name = !!name_col[1])
+}
+
+country_codes <- names(alex_doi_new_wide)[str_detect(names(alex_doi_new_wide), "^[A-Z]{2}$")]
+
+df_long <- alex_doi_new_wide %>%
+  filter(publication_date >= DATE_MIN, publication_date <= DATE_MAX,
+         doi_clean != EXCL_DOI) %>%
+  mutate(publication_year = as.integer(publication_year)) %>%
+  filter(!is.na(publication_year), publication_year > 2015) %>%
+  select(publication_year, doi_clean, all_of(country_codes)) %>%
+  pivot_longer(cols = all_of(country_codes),
+               names_to = "country_code", values_to = "value") %>%
+  filter(!is.na(value), value > 0) %>%
+  left_join(country_dict_std, by = c("country_code" = "code")) %>%
+  mutate(country_name = coalesce(name, country_code)) %>%
+  select(publication_year, doi_clean, country_code, country_name, value)
+
+
+
+```
+
+
+
+```{r}
+summary_full <- df_long %>%
+  group_by(publication_year, country_code, country_name) %>%
+  summarise(count = n_distinct(doi_clean), .groups = "drop") %>%
+  group_by(publication_year) %>%
+  mutate(year_total = sum(count)) %>%
+  ungroup()
+
+all_countries <- sort(unique(summary_full$country_name))
+
+```
+
+simple addition
+```{r}
+countries_doi_count <- df_long  %>%
+  group_by(country_name) %>%
+  summarise(unique_items = n_distinct(doi_clean), .groups = 'drop')
+
+
+```
+
+
+
+```{r}
+df_long |>
+  summarise(
+    rows         = n(),
+    unique_country = n_distinct(country_name),
+    unique_doi = n_distinct(doi_clean),
+    # Year      = publication_year,
+    .groups      = "drop"
+  )
+```
+
+```{r}
+# subset if unique items is greater than 10
+more_common_countries <- countries_doi_count %>% 
+  filter(unique_items >= 10)
+
+```
+
+analysis using only the top 100 countries
+```{r}
+more_common_countries_list <- more_common_countries$country_name
+
+test_countries <- df_long %>% filter(country_name %in% more_common_countries_list)
+
+
+test_countries |>
+  summarise(
+    rows         = n(),
+    unique_country = n_distinct(country_name),
+    unique_doi = n_distinct(doi_clean),
+    # Year      = publication_year,
+    .groups      = "drop"
+  )
+```
+
+```{r}
+library(gtsummary)
+library(gt)
+
+most_active_countries <- countries_doi_count %>% 
+  filter(unique_items >= 1000)
+# Create a publication-ready table 1
+
+most_active_countries_table <- most_active_countries|> 
+  arrange(desc(unique_items)) |> 
+  gt() |> 
+  cols_label(
+    country_name = "Country of Author(s)",
+    unique_items  = "Unique DOI's",
+    # wt  = "Weight (1000 lbs)"
+  ) |> 
+  tab_header(
+    title = "Top 10 Most Active Countries of Authorship",
+    subtitle = "Base on OpenAlex"
+  ) 
+
+# my_table <- mtcars |> 
+#   select(mpg, hp, wt) |> 
+#   head() |> 
+#   arrange(hp) |>  # Sorter by hp (lowest to highest)
+#   gt() |> 
+#   cols_label(
+#     mpg = "Miles Per Gallon",
+#     hp  = "Horsepower",
+#     wt  = "Weight (1000 lbs)"
+#   )
+
+most_active_countries_table
+```
+
+```{r}
+gtsave(most_active_countries_table, filename = "visual_output/most_active_countries_table.docx")
+
+```
+
+
+```{r}
+most_active_countries_list <- most_active_countries$country_name
+
+test1_countries <- df_long %>% filter(country_name %in% most_active_countries_list)
+
+
+test1_countries |>
+  summarise(
+    rows         = n(),
+    unique_country = n_distinct(country_name),
+    unique_doi = n_distinct(doi_clean),
+    # Year      = publication_year,
+    .groups      = "drop"
+  )
+```
+
+### journal hierarchy ###
+downloaded from https://www.scimagojr.com/journalrank.php
+first downloaded april 23, 2026
+```{r}
+#### SECTION with JOURNAL PRESTIGE ####
+# read in Scimagojr data
+library(readr)
+scimagojr <- read_delim("scimagojr_data/scimagojr 2025.csv",
+                             delim = ";", escape_double = FALSE, trim_ws = TRUE)
+scimagojr <- read_delim(
+  "scimagojr_data/scimagojr 2025.csv",
+  delim          = ";",
+  locale         = locale(decimal_mark = ","),
+  show_col_types = FALSE
+)
+
+# View(scimagojr)
+
+# subset scimagojr
+scimagojr_trim <- scimagojr %>% 
+  select(Title, Region, Categories, Areas, Overton, Issn,
+         `H index`, `SJR Best Quartile`, `Citations / Doc. (2years)`,
+         `Total Refs.`, `Total Citations (3years)`, `Total Docs. (2025)`, 
+         `Total Docs. (3years)`, Rank
+  )
+
+
+
+```
+
+
+```{r}
+library(stringr)
+
+normalize <- function(x) {
+  x %>%
+    str_to_lower() %>%
+    str_remove_all("^the\\s+") %>%
+    str_remove_all("[^a-z0-9 ]") %>%
+    str_squish()
+}
+
+alex_clean    <- alex_doi_new %>% mutate(title_key = normalize(primary_location.source.display_name))
+scimago_clean <- scimagojr_trim    %>% mutate(title_key = normalize(Title))
+
+alex_doi_new_journal <- alex_clean %>%
+  left_join(scimago_clean, by = "title_key")
+
+# --- Pivot ISSN column into long format (one ISSN per row) ---
+scimagojr_issn <- scimagojr %>%
+  mutate(Issn = str_remove_all(Issn, "\\s")) %>%    # strip whitespace
+  separate_rows(Issn, sep = ",") %>%                 # one row per ISSN
+  filter(Issn != "", !is.na(Issn)) %>%               # drop blanks
+  mutate(Issn = str_squish(Issn))
+
+# --- Join on ISSN ---
+# OpenAlex typically stores ISSNs as "XXXX-XXXX" so normalise both sides
+normalize_issn <- function(x) str_remove_all(str_to_upper(x), "-")
+
+alex_doi_new_journal <- alex_doi_new %>%
+  mutate(issn_key = normalize_issn(primary_location.source.issn_l)) %>%
+  left_join(
+    scimagojr_issn %>% mutate(issn_key = normalize_issn(Issn)),
+    by = "issn_key"
+  )
+
+# write csv
+# write.csv(alex_doi_new_journal, file = "output_data/alex_doi_new_journal.csv")
+
+# # table with all the journals and counts 
+# n_journal <- n_distinct(alex_doi_new_journal$primary_location.source.display_name)
+
+journal_counts <- alex_doi_new_journal %>%
+  distinct(doi_clean, primary_location.source.display_name) %>% 
+  count(primary_location.source.display_name, name = "Count") %>%
+  select(primary_location.source.display_name, Count) %>% 
+  rename("Journal Title" = primary_location.source.display_name) %>% 
+  arrange(desc(Count))
+
+journal_counts
+
+
+```
+
+
+```{r}
+# interactive graph
+library(dplyr)
+library(tidyr)
+
+journal_year_counts <- alex_doi_new_journal %>%
+  filter(!is.na(primary_location.source.display_name),
+         !is.na(publication_year)) %>%
+  distinct(
+    doi_clean,
+    primary_location.source.display_name,
+    publication_year,
+    `SJR Best Quartile`
+    # `H index`
+    # domain
+  ) %>%
+  count(
+    primary_location.source.display_name,
+    publication_year,
+    `SJR Best Quartile`,
+    # `H index`,
+    # domain,
+    name = "Citations"
+  ) %>%
+  rename(
+    `Journal Title` = primary_location.source.display_name,
+    Year = publication_year
+  ) %>%
+  arrange(`Journal Title`, Year)
+```
+
+
+```{r}
+library(DT)
+
+datatable(
+  journal_year_counts,
+  extensions = c("Buttons"),
+  options = list(
+    pageLength = 10,
+    autoWidth = TRUE,
+    dom = "Bfrtip",
+    buttons = c("copy", "csv", "excel"),
+    order = list(list(0, "asc"), list(1, "asc"))
+  ),
+  filter = "top",
+  rownames = FALSE
+)
+
+# # # left join title to journal title
+# alex_doi_new_journal <- alex_doi_new %>%
+#   left_join(scimagojr, by = c("primary_location.source.display_name" = "Title"))
+
+# See how many failed to match
+alex_doi_new_journal %>% 
+  filter(is.na(`SJR Best Quartile`)) %>% 
+  distinct(primary_location.source.display_name) %>% 
+  nrow()
+
+# unmatched journals
+unmatched_journals <- alex_doi_new_journal %>% 
+  filter(is.na(`SJR Best Quartile`)) %>% 
+  distinct(primary_location.source.display_name) 
+```
+
+data on SJR best quartiles
+```{r}
+
 ```
 
