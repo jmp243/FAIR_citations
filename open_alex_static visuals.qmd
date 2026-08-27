@@ -7,6 +7,13 @@ editor: visual
 Sunburst chart August 17, 2026 modified after using a new dataset that merged from open alex, downloaded August 7, 2026
 
 create tables with this information
+```{r}
+library(readr)
+library(tidyverse)
+alex_doi_new1 <- read_csv("output_data/alex_doi_new1.csv")
+```
+
+
 
 ```{r}
 library(DT)
@@ -421,7 +428,7 @@ treemap(sunburst_table,
 ```
 
 
-Reading google ai mode on generic query on August 18, 2026
+Reading google ai mode on generic query on August 18, 2026 query for treemap in R
 ```{r}
 # 1. Install and load packages
 # install.packages(c("ggplot2", "treemapify"))
@@ -439,9 +446,308 @@ ggplot(sunburst_table, aes(area = doi_count, fill = Domain, label = Subfield, su
   labs(title = "Distribution of Publications by Domain and Subfields")
 ```
 
+# saturation of the papers by open alex existing domains
+All four domains
+## within each domain, count the fields
+```{r}
+library(usethis)
+library(openalexR)
+# View the data structure
+# dplyr::glimpse(paper_data)
+
+###### do not share #################################
+usethis::edit_r_environ()
+
+options(openalexR.apikey = "")
+
+# Sys.getenv("OPENALEX_API_KEY")
+# # fetch paper info
+paper_data <- oa_fetch(
+  identifier = "W2302501749", # OpenAlex ID for the orignal paper is W2302501749
+  entity = "works",
+  verbose = TRUE
+)
+```
+Google search on api key for OpenAlex to get field data on 8/24/2026 I got back
+"4. Example: openalexR (R Package)If you are developing in R, you can add your key to your .Rprofile or .Renviron file using openalexR.apikey = "YOUR_API_KEY", then restrict your data frames using the select configuration:rlibrary(openalexR)
+
+oa_fetch(
+  entity = "works",
+  search = "machine learning",
+  options = oa_options(select = c("id", "display_name", "authorships"))
+)
+Use code with caution.If you need a breakdown of what fields are available for a particular endpoint, let me know which entity type (e.g., Works, Authors, Institutions, or Sources) you are targeting!"
+additional prompt - how do I write the API code in R? In the API The Domains endpoint is at api.openalex.org/domains. Fetch a single domain by ID — /domains/1 — or a list; with only four domains, one unfiltered request returns them all. You can still filter, search, sort, group, and page over them. You can filter and group domains by fields.id, and by works_count, cited_by_count, id, and display_name, all of which also sort. Full-text matching uses the search parameter (the older display_name.search filter is deprecated). To find works in a domain, use the Works endpoint: filter=primary_topic.domain.id:1 (primary only) or filter=topics.domain.id:1 (any assigned topic). For the full list of endpoints see the endpoints index.
+
+```{r}
+# library(httr2)
+# library(jsonlite)
+# library(dplyr)
+# 
+# # 1. Provide your working OpenAlex API Key
+# my_api_key <- "MMM"
+# 
+# # 2. Build a universally compliant URL string for the flat fields endpoint
+# # Since there are only 26 fields, a per_page of 50 captures all data in one response
+# target_url <- paste0("https://openalex.org", my_api_key, "&per_page=50")
+# 
+# # 3. Read and parse the JSON directly from the API endpoint
+# fields_data <- jsonlite::fromJSON(target_url)
+# fields_df <- fields_data$results
+# 
+# # 4. Extract and map the 26 fields cleanly to their parent domains
+# mapped_fields <- data.frame(
+#   domain_name = fields_df$domain$display_name,
+#   domain_id   = fields_df$domain$id,
+#   field_name  = fields_df$display_name,
+#   field_id    = fields_df$id
+# ) |> 
+#   dplyr::arrange(domain_name, field_name)
+# 
+# # 5. Loop and print out the complete structured table 
+# print(mapped_fields, max = Inf)
+# 
+# # 6. Sanity check validation counter
+# cat("\nTotal rows successfully processed:", nrow(mapped_fields), "\n")
+```
+failed to work
+
+documentation from OpenAlex as of August 11, 2026
+
+Signal	# groups	Familiarity	Fit to custom areas
+SDGs	17	High	Low
+Domains	4	High	Low
+Fields	26	High	Low
+Subfields	252	High	Medium
+Topics	4,516	Low	Medium-high
+
+```{r}
+summary(alex_doi_new1)
+```
+We have coverage in all domains and fields. and 210 out of 252 subfields in OpenAlex.
+Find which ones are the missing subfields 
+claude.ai prompt for Sonnet 5 Medium on Aug. 24, 2026 - I asked create a API pull in OpenAlex using R to get subfields data. there are 252 subfields I want to know what their fields are. In the API
+The Subfields endpoint is at `api.openalex.org/subfields`. Fetch a single subfield by ID — `/subfields/2718` — or a list, and [filter](https://help.openalex.org/api/filtering/), [search](https://help.openalex.org/api/searching/), [sort](https://help.openalex.org/api/sorting/), [group](https://help.openalex.org/api/grouping/), and [page](https://help.openalex.org/api/paging/) over it.
+You can filter and group subfields by their place in the hierarchy — `domain.id`, `field.id`, and `topics.id` — and by `works_count`, `cited_by_count`, `id`, and `display_name`, all of which also sort. Full-text matching uses the `search`[ parameter](https://help.openalex.org/api/searching/) (the older `display_name.search` filter is deprecated). To find works in a subfield, use the [Works](https://help.openalex.org/data/works/) endpoint: `filter=primary_topic.subfield.id:2718` (primary only) or `filter=topics.subfield.id:2718` (any assigned topic). For the full list of endpoints see the [endpoints index](https://help.openalex.org/api/endpoints/).
+Last updated August 11, 2026 (this was from the openalex website)
+response code
+```{r}
+library(httr2)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# Pull all subfields via cursor pagination (per_page max = 200,
+# and there are 252 subfields, so this will take 2 pages)
+get_openalex_subfields <- function(mailto = "your_email@example.com") {
+  
+  base_url <- "https://api.openalex.org/subfields"
+  cursor   <- "*"
+  all_results <- list()
+  
+  repeat {
+    resp <- request(base_url) %>%
+      req_url_query(
+        per_page = 200,
+        cursor   = cursor,
+        mailto   = mailto          # polite pool: faster, more reliable rate limits
+      ) %>%
+      req_perform()
+    
+    parsed <- resp_body_json(resp, simplifyVector = FALSE)
+    
+    all_results <- c(all_results, parsed$results)
+    
+    cursor <- parsed$meta$next_cursor
+    if (is.null(cursor) || length(parsed$results) == 0) break
+  }
+  
+  all_results
+}
+
+subfields_raw <- get_openalex_subfields(mailto = "your_email@example.com")
+length(subfields_raw)   # should be 252
+
+# Flatten into a tidy data frame: subfield -> its parent field -> its parent domain
+subfields_df <- map_dfr(subfields_raw, function(x) {
+  tibble(
+    subfield_id    = x$id,
+    subfield_name  = x$display_name,
+    field_id       = x$field$id,
+    field_name     = x$field$display_name,
+    domain_id      = x$domain$id,
+    domain_name    = x$domain$display_name,
+    works_count    = x$works_count %||% NA_integer_,
+    cited_by_count = x$cited_by_count %||% NA_integer_
+  )
+})
+
+# Strip the "https://openalex.org/" prefix off the IDs so you're left with the
+# bare numeric/alpha IDs, matching the style you used earlier (e.g. "2718")
+subfields_df <- subfields_df %>%
+  mutate(
+    subfield_id = sub("https://openalex.org/subfields/", "", subfield_id),
+    field_id    = sub("https://openalex.org/fields/",    "", field_id),
+    domain_id   = sub("https://openalex.org/domains/",   "", domain_id)
+  ) %>%
+  arrange(domain_name, field_name, subfield_name)
+
+print(subfields_df, n = 20)
+```
+from Claude - A few notes:
+
+mailto parameter: swap in a real email address. It's optional but puts you in OpenAlex's "polite pool," which gets faster/more consistent response times and is the recommended practice per their docs.
+per_page = 200 is the API max, and cursor-based paging (cursor = "*" then following meta$next_cursor) is required for list endpoints beyond the first page — offset-based paging caps out and isn't reliable for full-dataset pulls.
+The %||% (null-coalescing) operator comes from purrr/rlang — handles any subfield missing a works_count/cited_by_count gracefully instead of erroring.
+This gives you exactly the field ↔ subfield ↔ domain mapping table you asked about — subfields_df %>% count(domain_name, field_name) will show you how many subfields sit under each field.
+
+Since this maps directly onto the domain/field/subfield hierarchy already in alex_doi_new1, do you want to:
+
+Save this as a lookup CSV to join against your existing data (e.g. to double check your works CSV's Domain/Field/Subfield assignments are internally consistent with OpenAlex's canonical hierarchy), or
+Use it to build controlled dropdown choices (field_choices, subfield_choices) in the Shiny app instead of deriving them from whatever appears in your data?
 
 
-by domain, field
+# modified code
+```{r}
+library(httr2)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# Pull all subfields via cursor pagination (per_page max = 200,
+# and there are 252 subfields, so this will take 2 pages)
+get_openalex_subfields <- function(mailto = "jungmee.park@wichita.edu") {
+  
+  base_url <- "https://api.openalex.org/subfields"
+  cursor   <- "*"
+  all_results <- list()
+  
+  repeat {
+    resp <- request(base_url) %>%
+      req_url_query(
+        per_page = 200,
+        cursor   = cursor,
+        mailto   = mailto          # polite pool: faster, more reliable rate limits
+      ) %>%
+      req_perform()
+    
+    parsed <- resp_body_json(resp, simplifyVector = FALSE)
+    
+    all_results <- c(all_results, parsed$results)
+    
+    cursor <- parsed$meta$next_cursor
+    if (is.null(cursor) || length(parsed$results) == 0) break
+  }
+  
+  all_results
+}
+
+subfields_raw <- get_openalex_subfields(mailto = "jungmee.park@wichita.edu")
+length(subfields_raw)   # should be 252
+
+# Flatten into a tidy data frame: subfield -> its parent field -> its parent domain
+subfields_df <- map_dfr(subfields_raw, function(x) {
+  tibble(
+    subfield_id    = x$id,
+    subfield_name  = x$display_name,
+    field_id       = x$field$id,
+    field_name     = x$field$display_name,
+    domain_id      = x$domain$id,
+    domain_name    = x$domain$display_name,
+    works_count    = x$works_count %||% NA_integer_,
+    cited_by_count = x$cited_by_count %||% NA_integer_
+  )
+})
+
+# Strip the "https://openalex.org/" prefix off the IDs so you're left with the
+# bare numeric/alpha IDs, matching the style you used earlier (e.g. "2718")
+subfields_df <- subfields_df %>%
+  mutate(
+    subfield_id = sub("https://openalex.org/subfields/", "", subfield_id),
+    field_id    = sub("https://openalex.org/fields/",    "", field_id),
+    domain_id   = sub("https://openalex.org/domains/",   "", domain_id)
+  ) %>%
+  arrange(domain_name, field_name, subfield_name)
+
+print(subfields_df, n = 20)
+```
+Google ai prompt. dataframe A and dataframe b compare the different responses in the same columns (column names are slightly different) in R (8/24/2026)
+
+```{r}
+# response code
+# # Example if columns are shuffled
+# library(dplyr)
+# 
+# df_B <- df_B %>% 
+#   rename(col1 = slight_diff_name1, col2 = slight_diff_name2) %>% 
+#   select(colnames(df_A))
+
+subfields_df <- subfields_df |> 
+  mutate(Subfield = subfield_name)
+
+library(waldo)
+
+subfields_df_A <- subfields_df$Subfield
+subfields_df_B <- alex_doi_new1$Subfield
+
+# Elements in A that are completely missing from B
+unshown_subfields <- setdiff(subfields_df_A, subfields_df_B)
+```
+
+Google ai prompt "can you compare two variables in two different datasets" on 8/24/2026
+response 
+<!-- # Extract the two categorical variables -->
+<!-- cat_A <- df_A$var1 -->
+<!-- cat_B <- df_B$var2 -->
+
+<!-- # Calculate percentage of exact matches (ignoring NAs) -->
+<!-- mean(cat_A == cat_B, na.rm = TRUE) -->
+
+<!-- # View a breakdown of mismatches using a cross-tabulation -->
+<!-- table(cat_A, cat_B, useNA = "ifany") -->
+
+look at subfields_df for unshown fields
+```{r}
+unknown_fields <- subfields_df |> 
+  filter(Subfield %in% unshown_subfields)
+
+
+summary(unknown_fields)
+library(treemapify)
+library(ggplot2)
+
+ggplot(unknown_fields, aes(area = works_count, fill = domain_name,
+                            label = subfield_name, subgroup = domain_name)) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(color = "white", size = 2) +
+  geom_treemap_subgroup_text(place = "topleft", grow = FALSE,
+                              alpha = 0.6, colour = "black",
+                              fontface = "italic", size = 9) +
+  geom_treemap_text(colour = "white", place = "center",
+                     grow = FALSE, size = 8, reflow = TRUE) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Subfields by works_count, grouped by field",
+       fill = "Domain") +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+library(reactable)
+
+reactable(
+  unknown_fields %>% select(domain_name, field_name, subfield_name, works_count, cited_by_count),
+  groupBy = c("domain_name", "field_name"),
+  defaultExpanded = TRUE,   # fine to leave expanded now — only 35 rows total
+  columns = list(
+    works_count    = colDef(aggregate = "sum", format = colFormat(separators = TRUE)),
+    cited_by_count = colDef(aggregate = "sum", format = colFormat(separators = TRUE))
+  )
+)
+```
+
+
+
 ```{r}
 sunburst_table2 <- alex_doi_new1 %>%
   filter(!is.na(doi)) %>%
@@ -662,7 +968,7 @@ normalize <- function(x) {
     str_squish()
 }
 
-alex_clean    <- alex_doi_new %>% mutate(title_key = normalize(primary_location.source.display_name))
+alex_clean    <- alex_doi_new1 %>% mutate(title_key = normalize(primary_location.source.display_name))
 scimago_clean <- scimagojr_trim    %>% mutate(title_key = normalize(Title))
 
 alex_doi_new_journal <- alex_clean %>%
@@ -704,6 +1010,112 @@ journal_counts
 
 ```
 
+Question to Claude Sonnet 5 - when i have a data frame ... I want to show a tree map using SJR best Quartile and Domain
+
+original code 
+library(dplyr)
+library(treemapify)
+library(ggplot2)
+
+# 1. Join domain back in from alex_doi_new1 (which has it, post-merge)
+alex_doi_new_journal <- alex_doi_new_journal %>%
+  left_join(
+    alex_doi_new1 %>% distinct(doi_clean, domain),
+    by = "doi_clean"
+  )# 2. Summarize: count of works by Domain x SJR Best Quartile
+treemap_data <- alex_doi_new_journal %>%
+  filter(!is.na(domain)) %>%
+  mutate(
+    sjr_quartile = if_else(is.na(`SJR Best Quartile`) | `SJR Best Quartile` == "",
+                            "Unranked", `SJR Best Quartile`)
+  ) %>%
+  group_by(domain, sjr_quartile) %>%
+  summarise(n_docs = n_distinct(doi_clean), .groups = "drop")
+
+# 3. Treemap: rectangle size = doc count, grouped/bordered by Domain, colored by quartile
+ggplot(treemap_data, aes(area = n_docs, fill = sjr_quartile,
+                          label = sjr_quartile, subgroup = domain)) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(colour = "white", size = 3) +
+  geom_treemap_subgroup_text(place = "topleft", grow = FALSE,
+                              alpha = 0.7, colour = "black",
+                              fontface = "italic", size = 11) +
+  geom_treemap_text(colour = "white", place = "center",
+                     grow = FALSE, size = 10, reflow = TRUE) +
+  scale_fill_manual(values = c(
+    "Q1" = "#2c7fb8", "Q2" = "#41b6c4", "Q3" = "#a1dab4",
+    "Q4" = "#ffffcc", "Unranked" = "grey70"
+  )) +
+  labs(title = "Documents by Domain and SJR Best Quartile",
+       fill = "SJR Quartile") +
+  theme(legend.position = "bottom")
+
+
+Modified code
+```{r}
+library(dplyr)
+library(treemapify)
+library(ggplot2)
+
+# 2. Summarize: count of works by Domain x SJR Best Quartile
+treemap_data <- alex_doi_new_journal %>%
+  filter(!is.na(Domain)) %>%
+  mutate(
+    sjr_quartile = if_else(is.na(`SJR Best Quartile`) | `SJR Best Quartile` == "",
+                            "Unranked", `SJR Best Quartile`)
+  ) %>%
+  group_by(Domain, sjr_quartile) %>%
+  summarise(n_docs = n_distinct(doi_clean), .groups = "drop")
+
+# 3. Treemap: rectangle size = doc count, grouped/bordered by Domain, colored by quartile
+ggplot(treemap_data, aes(area = n_docs, fill = sjr_quartile,
+                          label = sjr_quartile, subgroup = Domain)) +
+  geom_treemap() +
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 3) +
+  geom_treemap_subgroup_text(place = "topleft", grow = FALSE,
+                              alpha = 0.7, colour = "black",
+                              fontface = "italic", size = 11) +
+  geom_treemap_text(colour = "white", place = "center",
+                     grow = FALSE, size = 10, reflow = TRUE) +
+  scale_fill_manual(values = c(
+    "Q1" = "#2c7fb8", "Q2" = "#41b6c4", "Q3" = "#a1dab4",
+    "Q4" = "#ffffcc", "Unranked" = "grey70"
+  )) +
+  labs(title = "Documents by Domain and SJR Best Quartile",
+       fill = "SJR Quartile") +
+  theme(legend.position = "bottom")
+```
+What is a tabular way to represent this data?
+response 
+library(janitor)
+
+alex_doi_new_journal %>%
+  filter(!is.na(domain)) %>%
+  mutate(sjr_quartile = if_else(is.na(`SJR Best Quartile`) | `SJR Best Quartile` == "",
+                                 "Unranked", `SJR Best Quartile`)) %>%
+  distinct(doi_clean, domain, sjr_quartile) %>%
+  tabyl(domain, sjr_quartile) %>%
+  adorn_totals(c("row", "col")) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 1) %>%
+  adorn_ns()   # shows "45.2% (120)" — percentage with raw count in parens
+  
+```{r}
+library(janitor)
+
+alex_doi_new_journal %>%
+  filter(!is.na(Domain)) %>%
+  mutate(sjr_quartile = if_else(is.na(`SJR Best Quartile`) | `SJR Best Quartile` == "",
+                                 "Unranked", `SJR Best Quartile`)) %>%
+  distinct(doi_clean, Domain, sjr_quartile) %>%
+  tabyl(Domain, sjr_quartile) %>%
+  adorn_totals(c("row", "col")) %>%
+  adorn_percentages("row") %>%
+  adorn_pct_formatting(digits = 1) %>%
+  adorn_ns()   # shows "45.2% (120)" — percentage with raw count in parens
+```
+
+
 
 ```{r}
 # interactive graph
@@ -734,6 +1146,19 @@ journal_year_counts <- alex_doi_new_journal %>%
     Year = publication_year
   ) %>%
   arrange(`Journal Title`, Year)
+```
+
+
+Count only citations with ISSN
+```{r}
+alex_doi_issn <- alex_doi_new_journal |> 
+  filter(!is.na(primary_location.source.issn_l)) #12555 out of 16111 citations had issn's
+
+```
+
+
+```{r}
+
 ```
 
 
@@ -768,10 +1193,5 @@ alex_doi_new_journal %>%
 unmatched_journals <- alex_doi_new_journal %>% 
   filter(is.na(`SJR Best Quartile`)) %>% 
   distinct(primary_location.source.display_name) 
-```
-
-data on SJR best quartiles
-```{r}
-
 ```
 
