@@ -1,6 +1,6 @@
 # Wichita State University
 # 2026-03-06
-# last run 2026-08-17
+# last run 2026-08-31
 
 # open alex api
 # install.packages("openalexR")
@@ -82,9 +82,10 @@ dups <- alex_doi_new %>%
   group_by(title) %>%
   filter(n() > 1) %>%
   ungroup()
+# 1564 duplicates based on title alone
 
 table(dups$type)
-names(dups)
+# names(dups)
 # dups_version <- dups %>% 
 #   filter(version == "acceptedVersion")
 
@@ -98,6 +99,8 @@ dups_api <- alex_doi %>%
   ) %>%
   filter(has_cites) %>%
   ungroup()
+
+# 1170 had at least one citation
 
 # remove has cites variable
 dups_api <- dups_api %>% 
@@ -174,7 +177,7 @@ alex_doi_new1 <- alex_doi_new1  %>%
   mutate(.row_id = row_number())
 
 # save csv of new input data
-write.csv(alex_doi_new1, file = "alex_doi_new1.csv")
+write.csv(alex_doi_new1, file = "output_data/alex_doi_new1.csv")
 
 
 country_wide <- alex_doi_new1 %>%
