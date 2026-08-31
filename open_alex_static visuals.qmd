@@ -428,23 +428,103 @@ treemap(sunburst_table,
 ```
 
 
-Reading google ai mode on generic query on August 18, 2026 query for treemap in R
+Reading google ai mode on generic query on August 18, 2026 query for treemap in R.
+code updated with a prompt to claude ai sonnet 5 for prompts on web accessible colors and min.size on August 31, 2026.
 ```{r}
 # 1. Install and load packages
-# install.packages(c("ggplot2", "treemapify"))
+# install.packages(c("showtext", "sysfonts"))
 library(ggplot2)
 library(treemapify)
+library(extrafont)
+# font_import()   # one-time, slow — scans system fonts
+# loadfonts(device = "win")
+library(showtext) 
+#face="bold",
+library(sysfonts) 
+#for family = "mono" for text
 
+okabe_ito <- c("#E69F00", "#56B4E9", "#009E73","#F0E442", "#0072B2")  # 4 colors, use as many as you need
 # 2. Use the same data frame from Method 1
 # 3. Build the ggplot treemap
 ggplot(sunburst_table, aes(area = doi_count, fill = Domain, label = Subfield, subgroup = Domain)) +
   geom_treemap() +
   # Add white text labels for the sub-categories
-  geom_treemap_text(colour = "white", place = "center", reflow = TRUE) +
+  geom_treemap_text(colour = "black", place = "center", reflow = TRUE,size = 14, 
+                    # fontface = "italic", 
+                    family = "serif",
+                    min.size = 6) +
   # Draw a thick border around the main categories
-  geom_treemap_subgroup_border(colour = "black", size = 0.5) +
-  labs(title = "Distribution of Publications by Domain and Subfields")
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
+    scale_fill_manual(values = okabe_ito) +
+  labs(title = "Distribution of Publications by Domain and Subfields") +
+    theme(
+    plot.title = element_text(family = "serif", size = 16, face = "bold"),
+    text = element_text(family = "serif")   
+  )
+
+
 ```
+
+adding a helping column per conversation with claude 8/31/26
+```{r}
+library(dplyr)
+
+# Flag the top subfield within each domain, and build a label
+# that shows "Subfield (n = count)" only for that one
+sunburst_table <- sunburst_table %>%
+  group_by(Domain) %>%
+  mutate(
+    is_top_subfield = doi_count == max(doi_count),
+    # shortened display name, only for labeling — keeps Subfield itself untouched
+subfield_short = case_when(
+  Subfield == "Public Health, Environmental and Occupational Health" ~ "Public, Environmental, and Occupational Health",
+  Subfield == "Management Science and Operations Research"    ~ "Management Sci. and Operations Research",
+  Subfield == "Economics, Econometrics and Finance"           ~ "Econ/Econometrics/Finance",
+  TRUE ~ Subfield
+),
+    label_text = if_else(
+      is_top_subfield,
+      paste0(subfield_short, "\n(n = ", scales::comma(doi_count), ")"),
+      subfield_short
+    )
+  ) %>%
+  ungroup()
+# sunburst_table <- sunburst_table %>%
+#   group_by(Domain) %>%
+#   mutate(
+#     is_top_subfield = doi_count == max(doi_count),
+#     label_text = if_else(
+#       is_top_subfield,
+#       paste0(Subfield, "\n(n = ", scales::comma(doi_count), ")"),
+#       Subfield
+#     )
+#   ) %>%
+#   ungroup()
+
+okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")
+
+ggplot(sunburst_table, aes(area = doi_count, fill = Domain, label = label_text, subgroup = Domain)) +
+  geom_treemap() +
+  geom_treemap_text(colour = "black", place = "center", reflow = TRUE,
+                     # family = "serif",
+                     min.size = 5) +
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
+  scale_fill_manual(values = okabe_ito) +
+  labs(title = "Distribution of Publications by Domain and Subfields") 
+  # theme(
+  #   plot.title = element_text(family = "serif", size = 12, face = "bold"),
+  #   text = element_text(family = "serif")
+  # )
+```
+```{r}
+sunburst_table %>%
+  group_by(Domain) %>%
+  mutate(pct_of_domain = doi_count / sum(doi_count) * 100,
+         pct_of_total  = doi_count / sum(sunburst_table$doi_count) * 100) %>%
+  filter(is_top_subfield) %>%
+  select(Domain, Subfield, doi_count, pct_of_domain, pct_of_total)
+```
+
 
 # saturation of the papers by open alex existing domains
 All four domains
