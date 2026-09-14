@@ -428,6 +428,71 @@ treemap(sunburst_table,
 ```
 
 
+do this with domain and field
+looked up how to add numbers for top field on 8/31 using Google AI
+```{r}
+library(dplyr)
+library(treemapify)
+
+field_table <- alex_doi_new1 %>%
+  filter(!is.na(doi)) %>%
+  mutate(
+    Domain = coalesce(Domain, "Unclassified"),
+    Field  = coalesce(Field,  "Unclassified")
+  ) %>%
+  group_by(Domain, Field) %>%
+  summarise(doi_count = n_distinct(doi), .groups = "drop")
+
+field_table <- field_table %>%
+  group_by(Domain) %>%
+  mutate(
+    is_top_field = doi_count == max(doi_count),
+    label_text = if_else(
+      is_top_field,
+      paste0(Field, "\n(n = ", doi_count, ")"),
+      Field
+    )
+  ) %>%
+  ungroup() # sent request in Claude to ask how to remove the comma Sonnet 5 Medium on 9/14/2026
+```
+
+
+```{r}
+# field_table <- field_table %>%
+#   group_by(Domain) %>%
+#   mutate(
+#     is_top_field = doi_count == max(doi_count),
+#     label_text = if_else(
+#       is_top_field,
+#       paste0(Field, "\n(n = ", scales::comma(doi_count), ")"),
+#       Field
+#     )
+#   ) %>%
+#   ungroup()
+```
+
+look at https://journal.r-project.org/articles/RJ-2023-071/
+Read the Google AI summary on okabe ito 
+```{r}
+okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2") 
+
+library(showtext)
+font_add(family = "Arial", regular = "Arial.ttf") 
+
+ggplot(field_table, aes(area = doi_count, fill = Domain, label = label_text, subgroup = Domain)) +
+  geom_treemap() +
+  geom_treemap_text(colour = "black", place = "center", reflow = TRUE, size = 14,
+                     family = "Arial", min.size =5) +
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
+  scale_fill_manual(values = okabe_ito) +
+  labs(title = "Distribution of Publications by Domain and Field") +
+  # theme_minimal(base_family = "Arial")
+theme(
+  plot.title = element_text(family = "Arial", size = 14, face = "bold"),
+  text = element_text(family = "Arial")
+ )
+```
+
 Reading google ai mode on generic query on August 18, 2026 query for treemap in R.
 code updated with a prompt to claude ai sonnet 5 for prompts on web accessible colors and min.size on August 31, 2026.
 ```{r}
@@ -477,9 +542,12 @@ sunburst_table <- sunburst_table %>%
     is_top_subfield = doi_count == max(doi_count),
     # shortened display name, only for labeling — keeps Subfield itself untouched
 subfield_short = case_when(
-  Subfield == "Public Health, Environmental and Occupational Health" ~ "Public, Environmental, and Occupational Health",
-  Subfield == "Management Science and Operations Research"    ~ "Management Sci. and Operations Research",
-  Subfield == "Economics, Econometrics and Finance"           ~ "Econ/Econometrics/Finance",
+  Subfield == "Public Health, Environmental and Occupational Health" ~ "Public/Environmental/Occupational Health",
+  Subfield == "Health, Toxicology and Mutagenesis" ~ "Health/Toxicology/Mutagenesis",
+  Subfield == "Management Science and Operations Research"    ~ "Management Sci./Operations Research",
+  # Subfield == "Statistics, Probability and Uncertainty"           ~ "Statistics/Probability/Uncertainty",
+  Subfield == "Sociology and Political Science"           ~ "Sociology/Political Science",
+  Subfield == "Management, Monitoring, Policy and Law"           ~ "Management/Monitoring/Policy/Law",
   TRUE ~ Subfield
 ),
     label_text = if_else(
@@ -516,6 +584,7 @@ ggplot(sunburst_table, aes(area = doi_count, fill = Domain, label = label_text, 
   #   text = element_text(family = "serif")
   # )
 ```
+
 ```{r}
 sunburst_table %>%
   group_by(Domain) %>%
@@ -525,7 +594,7 @@ sunburst_table %>%
   select(Domain, Subfield, doi_count, pct_of_domain, pct_of_total)
 ```
 
-
+################################################################################
 # saturation of the papers by open alex existing domains
 All four domains
 ## within each domain, count the fields
