@@ -1,0 +1,228 @@
+---
+title: "02-Data_Visualization_Table_FAIR_Retrospective"
+format: html
+editor: visual
+---
+
+Read in data
+Please run 01-Data_Cleaning_FAIR_Retrospective first
+```{r}
+library(readr)
+library(tidyverse)
+alex_doi_new1 <- read_csv("output_data/alex_doi_new1.csv")
+```
+
+Simple Summary Chart for the Numbers of DOI in the Domain, Field, and Subfield
+```{r}
+# Summary table grouped by the unique DOI
+domain_summary <- alex_doi_new1 %>%
+  filter(Domain !="") %>% 
+  group_by(Domain) %>%
+  summarise(
+    unique_dois_count = n_distinct(doi, na.rm = TRUE),
+    unique_field_count = n_distinct(Field, na.rm = TRUE),
+    unique_subfield_count = n_distinct(Subfield, na.rm = TRUE)
+  )
+
+# Print the resulting table
+print(domain_summary)
+```
+
+```{r}
+# generate a table with count of the top Field
+# Read the Google AI summary on how to add numbers for top field on 8/31 
+field_table <- alex_doi_new1 %>%
+  filter(!is.na(doi)) %>%
+  mutate(
+    Domain = coalesce(Domain, "Unclassified"),
+    Field  = coalesce(Field,  "Unclassified")
+  ) %>%
+  group_by(Domain, Field) %>%
+  summarise(doi_count = n_distinct(doi), .groups = "drop")
+
+field_table <- field_table %>%
+  group_by(Domain) %>%
+  mutate(
+    is_top_field = doi_count == max(doi_count),
+    label_text = if_else(
+      is_top_field,
+      paste0(Field, "\n(n = ", doi_count, ")"),
+      Field
+    )
+  ) %>%
+  ungroup()
+```
+
+Treemap 
+```{r}
+okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2") 
+
+library(showtext)
+font_add(family = "Arial", regular = "Arial.ttf")
+showtext_auto()
+
+ggplot(field_table, aes(area = doi_count, fill = Domain, label = label_text, subgroup = Domain)) +
+  geom_treemap() +
+  geom_treemap_text(colour = "black", place = "center", reflow = TRUE, size = 14,
+                     family = "Arial", min.size =5) +
+  geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
+  scale_fill_manual(values = okabe_ito) +
+  labs(title = "Distribution of Publications by Domain and Field") 
+```
+
+#### Table of countries ####
+# list of countries
+Logic for the countries count. Generated with the assistance of Google ai mode on July 1 2026.
+```{r}
+DATE_MIN   <- as.Date("2016-03-15")
+DATE_MAX   <- as.Date("2026-03-16")
+
+code_col <- intersect(c("code", "iso2", "iso2c", "country_code"), names(country_dict))
+name_col <- intersect(c("name", "country_name", "country", "label"),  names(country_dict))
+
+if (length(code_col) == 0) stop("country_dict must have a code column.")
+country_dict_std <- if (length(name_col) == 0) {
+  country_dict %>% rename(code = !!code_col[1]) %>% mutate(name = code)
+} else {
+  country_dict %>% rename(code = !!code_col[1], name = !!name_col[1])
+}
+
+country_codes <- names(alex_doi_new_wide)[str_detect(names(alex_doi_new_wide), "^[A-Z]{2}$")]
+```
+
+
+```{r}
+df_long <- alex_doi_new_wide %>%
+  filter(publication_date >= DATE_MIN, publication_date <= DATE_MAX) %>%
+  mutate(publication_year = as.integer(publication_year)) %>%
+  filter(!is.na(publication_year), publication_year > 2015) %>%
+  select(publication_year, doi_clean, all_of(country_codes)) %>%
+  pivot_longer(cols = all_of(country_codes),
+               names_to = "country_code", values_to = "value") %>%
+  filter(!is.na(value), value > 0) %>%
+  left_join(country_dict_std, by = c("country_code" = "code")) %>%
+  mutate(country_name = coalesce(name, country_code)) %>%
+  select(publication_year, doi_clean, country_code, country_name, value)
+
+summary_full <- df_long %>%
+  group_by(publication_year, country_code, country_name) %>%
+  summarise(count = n_distinct(doi_clean), .groups = "drop") %>%
+  group_by(publication_year) %>%
+  mutate(year_total = sum(count)) %>%
+  ungroup()
+
+all_countries <- sort(unique(summary_full$country_name))
+
+```
+
+# Table for Countries count by unique DOI's
+```{r}
+countries_doi_count <- df_long  %>%
+  group_by(country_name) %>%
+  summarise(unique_items = n_distinct(doi_clean), .groups = 'drop')
+```
+
+
+#### Finding the Subfields not represented ####
+We have coverage in all domains and fields. and 210 out of 252 subfields in OpenAlex.
+claude.ai prompt for Sonnet 5 Medium on Aug. 24, 2026 - I asked create a API pull in OpenAlex using R to get subfields data. There are 252 subfields. The Subfields endpoint is at `api.openalex.org/subfields`.
+What are they?
+I modified the response code to...
+```{r}
+library(httr2)
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# Pull all subfields via cursor pagination (per_page max = 200,
+# and there are 252 subfields, so this will take 2 pages)
+get_openalex_subfields <- function(mailto = "jungmee.park@wichita.edu") {
+  
+  base_url <- "https://api.openalex.org/subfields"
+  cursor   <- "*"
+  all_results <- list()
+  
+  repeat {
+    resp <- request(base_url) %>%
+      req_url_query(
+        per_page = 200,
+        cursor   = cursor,
+        mailto   = mailto          
+      ) %>%
+      req_perform()
+    
+    parsed <- resp_body_json(resp, simplifyVector = FALSE)
+    
+    all_results <- c(all_results, parsed$results)
+    
+    cursor <- parsed$meta$next_cursor
+    if (is.null(cursor) || length(parsed$results) == 0) break
+  }
+  
+  all_results
+}
+
+subfields_raw <- get_openalex_subfields(mailto = "jungmee.park@wichita.edu")
+length(subfields_raw)   # should be 252
+
+# Flatten into a tidy data frame: subfield -> its parent field -> its parent domain
+subfields_df <- map_dfr(subfields_raw, function(x) {
+  tibble(
+    subfield_id    = x$id,
+    subfield_name  = x$display_name,
+    field_id       = x$field$id,
+    field_name     = x$field$display_name,
+    domain_id      = x$domain$id,
+    domain_name    = x$domain$display_name,
+    works_count    = x$works_count %||% NA_integer_,
+    cited_by_count = x$cited_by_count %||% NA_integer_
+  )
+})
+
+# Strip the "https://openalex.org/" prefix off the IDs so you're left with the
+# bare numeric/alpha IDs, matching the style you used earlier (e.g. "2718")
+subfields_df <- subfields_df %>%
+  mutate(
+    subfield_id = sub("https://openalex.org/subfields/", "", subfield_id),
+    field_id    = sub("https://openalex.org/fields/",    "", field_id),
+    domain_id   = sub("https://openalex.org/domains/",   "", domain_id)
+  ) %>%
+  arrange(domain_name, field_name, subfield_name)
+
+
+```
+Google prompt "can you compare two variables in two different datasets" on 8/24/2026
+
+Google ai prompt. dataframe A and dataframe b compare the different responses in the same columns (column names are slightly different) in R (8/24/2026)
+# response code
+# # Example if columns are shuffled
+# library(dplyr)
+# 
+# df_B <- df_B %>% 
+#   rename(col1 = slight_diff_name1, col2 = slight_diff_name2) %>% 
+#   select(colnames(df_A))
+
+Use library(waldo) to find missing subfields
+```{r}
+subfields_df <- subfields_df |> 
+  mutate(Subfield = subfield_name)
+
+library(waldo)
+
+subfields_df_A <- subfields_df$Subfield
+subfields_df_B <- alex_doi_new1$Subfield
+
+# Elements in A that are completely missing from B
+unshown_subfields <- setdiff(subfields_df_A, subfields_df_B)
+```
+
+
+response modified to
+```{r}
+unknown_subfields <- subfields_df |> 
+  filter(Subfield %in% unshown_subfields)
+
+```
+
+
+
