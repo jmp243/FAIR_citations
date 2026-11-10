@@ -4,19 +4,80 @@ format: html
 editor: visual
 ---
 
-Read in data
+# Read in data
+
 Please run 01-Data_Cleaning_FAIR_Retrospective first
+
 ```{r}
 library(readr)
 library(tidyverse)
 alex_doi_new1 <- read_csv("output_data/alex_doi_new1.csv")
 ```
 
+# Country Code analysis
+
+This code chunk is redundant if you ran 01-Data_Cleaning_FAIR_Retrospective.R recently and it is still cached in memory.
+
+```{r}
+#### Country Codes ####
+# code modified from google ai search on July 1, 2026
+# pivot the data frame longer
+country_wide <- alex_doi_new1 %>%
+  select(.row_id, authorships.countries) %>%
+  # separate multiple rows
+  separate_rows(authorships.countries, sep = "\\|") %>%
+  mutate(
+    country = str_trim(authorships.countries),
+    country = toupper(country),         
+    country = na_if(country, "")        # drop NA's
+  ) %>%
+  filter(!is.na(country)) %>%
+  distinct(.row_id, country) %>%        
+  mutate(has_country = 1L) %>%          
+  pivot_wider(
+    names_from = country,
+    values_from = has_country,
+    values_fill = 0
+  )
+
+library(countrycode)
+# create a country code dictionary
+country_codes <- names(country_wide)
+
+# remove non‑country columns like ".row_id"
+country_codes <- country_codes[country_codes != ".row_id"]
+
+# create a country code dictionary using  ISO‑3166‑1 country code 
+country_dict <- data.frame(
+  code = country_codes,
+  country = countrycode(country_codes, origin = "iso2c", destination = "country.name")
+)
+
+country_dict$country[country_dict$code == "XK"] <- "Kosovo" # add Kosovo
+
+# Join back to original if you want the rest of the columns:
+alex_doi_new_wide <- alex_doi_new1 %>%
+  left_join(country_wide, by = ".row_id") %>%
+  select(-.row_id)
+
+```
+
+OPTIONAL
+
+```{r}
+# write to csv
+write.csv(alex_doi_new_wide, file = "output_data/alex_doi_new_wide.csv")
+
+```
+
+# Summary Chart of DOI
+
 Simple Summary Chart for the Numbers of DOI in the Domain, Field, and Subfield
+
 ```{r}
 # Summary table grouped by the unique DOI
 domain_summary <- alex_doi_new1 %>%
-  filter(Domain !="") %>% 
+  filter(Domain !="") %>%
   group_by(Domain) %>%
   summarise(
     unique_dois_count = n_distinct(doi, na.rm = TRUE),
@@ -26,7 +87,10 @@ domain_summary <- alex_doi_new1 %>%
 
 # Print the resulting table
 print(domain_summary)
+
 ```
+
+# Field Tables
 
 ```{r}
 # generate a table with count of the top Field
@@ -53,29 +117,77 @@ field_table <- field_table %>%
   ungroup()
 ```
 
-Treemap 
+# Treemap graphic using the Okabe Ito color scheme
+
 ```{r}
-okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2") 
+okabe_ito <- c("#009E73", "#F0E442", "#E69F00", "#56B4E9", "#0072B2") 
 
 library(showtext)
 font_add(family = "Arial", regular = "Arial.ttf")
 showtext_auto()
 
+```
+
+With a horizontal legend. Used Claude Sonnet 5.5 Medium on 9/28/26 to move the legend to horizontal.
+
+```{r}
+library(forcats)
+
+field_table <- field_table %>%
+  mutate(Domain = fct_reorder(Domain, doi_count, .fun = sum, .desc = TRUE))
+
+domain_order <- field_table %>%
+  group_by(Domain) %>%
+  summarise(total = sum(doi_count)) %>%
+  arrange(desc(total)) %>%
+  pull(Domain)
+
+field_table$Domain <- factor(field_table$Domain, levels = domain_order)
+
+library(treemapify)
 ggplot(field_table, aes(area = doi_count, fill = Domain, label = label_text, subgroup = Domain)) +
   geom_treemap() +
   geom_treemap_text(colour = "black", place = "center", reflow = TRUE, size = 14,
-                     family = "Arial", min.size =5) +
+                    family = "Arial", min.size = 5) +
   geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
   scale_fill_manual(values = okabe_ito) +
-  labs(title = "Distribution of Publications by Domain and Field") 
+  labs(title = "Distribution of Publications by Domain and Field") +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.title = element_blank()
+  )
+
 ```
 
-#### Table of countries ####
-# list of countries
-Logic for the countries count. Generated with the assistance of Google ai mode on July 1 2026.
+To make it higher resolution
+
+```{r}
+# p <- ggplot(field_table, aes(area = doi_count, fill = Domain, label = label_text, subgroup = Domain)) +
+#   geom_treemap() +
+#   geom_treemap_text(colour = "black", place = "center", reflow = TRUE, size = 14,
+#                     family = "Arial", min.size = 5) +
+#   geom_treemap_subgroup_border(colour = "darkgrey", size = 0.5) +
+#   scale_fill_manual(values = okabe_ito) +
+#   labs(title = "Distribution of Publications by Domain and Field") +
+#   theme(
+#     legend.position = "bottom",
+#     legend.direction = "horizontal",
+#     legend.title = element_blank()
+#   )
+
+# ggsave("visual_output/treemap.png", plot = p, width = 10, height = 7, units = "in", dpi = 300)
+```
+
+# Table of countries
+
+## list of countries
+
+Logic for the countries count. Generated with the assistance of Google ai mode on July 1 2026. Run 01-Data_Cleaning_FAIR first to create the list of countries
+
 ```{r}
 DATE_MIN   <- as.Date("2016-03-15")
-DATE_MAX   <- as.Date("2026-03-16")
+DATE_MAX   <- as.Date("2026-03-15")
 
 code_col <- intersect(c("code", "iso2", "iso2c", "country_code"), names(country_dict))
 name_col <- intersect(c("name", "country_name", "country", "label"),  names(country_dict))
@@ -89,7 +201,6 @@ country_dict_std <- if (length(name_col) == 0) {
 
 country_codes <- names(alex_doi_new_wide)[str_detect(names(alex_doi_new_wide), "^[A-Z]{2}$")]
 ```
-
 
 ```{r}
 df_long <- alex_doi_new_wide %>%
@@ -115,94 +226,294 @@ all_countries <- sort(unique(summary_full$country_name))
 
 ```
 
-# Table for Countries count by unique DOI's
+# Countries Map by count of unique DOI's
+
 ```{r}
+
+
+countries_doi_count <- df_long %>%
+  group_by(country_code, country_name) %>%
+  summarise(
+    unique_items = n_distinct(doi_clean),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    adm0_a3 = countrycode(
+      country_code,
+      origin = "iso2c",
+      destination = "iso3c"
+    )
+  )
+```
+
+Co-pilot prompt on 11/9/26
+I have this code in R. 
+df_long <- alex_doi_new_wide %>%
+  filter(publication_date >= DATE_MIN, publication_date <= DATE_MAX) %>%
+  mutate(publication_year = as.integer(publication_year)) %>%
+  filter(!is.na(publication_year), publication_year > 2015) %>%
+  select(publication_year, doi_clean, all_of(country_codes)) %>%
+  pivot_longer(cols = all_of(country_codes),
+               names_to = "country_code", values_to = "value") %>%
+  filter(!is.na(value), value > 0) %>%
+  left_join(country_dict_std, by = c("country_code" = "code")) %>%
+  mutate(country_name = coalesce(name, country_code)) %>%
+  select(publication_year, doi_clean, country_code, country_name, value)
+
+
+summary_full <- df_long %>%
+  group_by(publication_year, country_code, country_name) %>%
+  summarise(count = n_distinct(doi_clean), .groups = "drop") %>%
+  group_by(publication_year) %>%
+  mutate(year_total = sum(count)) %>%
+  ungroup()
+
+
+all_countries <- sort(unique(summary_full$country_name))
 countries_doi_count <- df_long  %>%
   group_by(country_name) %>%
   summarise(unique_items = n_distinct(doi_clean), .groups = 'drop')
+How do I turn countries_doi_count into a map image with the top 10 countries of countries_doi_count in R?
+
+#### co-pilot response
+```{r}
+library(dplyr)
+library(sf)
+library(ggplot2)
+library(rnaturalearth)
+library(ggrepel)
+
+
+world_counts <- world %>%
+  left_join(
+    countries_doi_count,
+    by = c("adm0_a3" = "adm0_a3")
+  )
+# DOI counts by country
+countries_doi_count <- df_long %>%
+  group_by(country_code, country_name) %>%
+  summarise(
+    unique_items = n_distinct(doi_clean),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    adm0_a3 = countrycode(
+      country_code,
+      origin = "iso2c",
+      destination = "iso3c"
+    )
+  )
+
+```
+
+```{r}
+
+```
+```{r}
+library(ggrepel)
+
+label_data <- world_counts %>%
+  filter(!is.na(unique_items)) %>%
+  slice_max(unique_items, n = 10) %>%
+  st_point_on_surface() %>%
+  cbind(st_coordinates(.))
+
+p10 <-ggplot(world_counts) +
+  geom_sf(
+    aes(fill = unique_items),
+    color = "white",
+    linewidth = 0.1
+  ) +
+  geom_label_repel(
+    data = label_data,
+    aes(
+      X,
+      Y,
+      label = paste0(
+        name,
+        "\n",
+        scales::comma(unique_items)
+      )
+    ),
+    size = 5, 
+    max.overlaps = Inf,
+    force = 5,
+    box.padding = 0.7,
+    point.padding = 0.5,
+    min.segment.length = 0
+  ) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    na.value = "grey90",
+    name = "Unique DOIs"
+  ) +
+  labs(
+    title = "Unique DOI Counts by Country",
+    subtitle = "Top 10 countries labeled"
+  ) +
+  theme_minimal()+ theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
+# ggplot(world_counts) +
+#   geom_sf(aes(fill = unique_items),
+#           color = "white",
+#           linewidth = 0.1) +
+#   geom_label_repel(
+#     data = label_data,
+#     aes(
+#       X, Y,
+#       label = paste0(name, "\n", scales::comma(unique_items))
+#     ),
+#     size = 3,
+#     box.padding = 0.5
+#   ) +
+#   scale_fill_viridis_c(
+#     option = "plasma",
+#     na.value = "grey90",
+#     name = "Unique DOIs"
+#   ) +
+#   labs(
+#     title = "Unique DOI Counts by Country",
+#     subtitle = "Top 10 countries labeled"
+#   ) +
+#   theme_minimal()
+p10
+```
+# save png
+```{r}
+ggsave(
+  "visual_output/top10_doi_countries.png",
+  plot = p10,
+  width = 10,
+  height = 6,
+  units = "in",
+  dpi = 600,
+  bg = "white"
+)
 ```
 
 
-#### Finding the Subfields not represented ####
-We have coverage in all domains and fields. and 210 out of 252 subfields in OpenAlex.
-claude.ai prompt for Sonnet 5 Medium on Aug. 24, 2026 - I asked create a API pull in OpenAlex using R to get subfields data. There are 252 subfields. The Subfields endpoint is at `api.openalex.org/subfields`.
-What are they?
-I modified the response code to...
+```{r}
+library(ggrepel)
+
+label_data <- world_counts %>%
+  filter(!is.na(unique_items)) %>%
+  slice_max(unique_items, n = 5) %>%
+  st_point_on_surface() %>%
+  cbind(st_coordinates(.))
+
+p5 <-ggplot(world_counts) +
+  geom_sf(
+    aes(fill = unique_items),
+    color = "white",
+    linewidth = 0.1
+  ) +
+  geom_label_repel(
+    data = label_data,
+    aes(
+      X,
+      Y,
+      label = paste0(
+        name,
+        "\n",
+        scales::comma(unique_items)
+      )
+    ),
+    size = 5, 
+    max.overlaps = Inf,
+    force = 5,
+    box.padding = 0.7,
+    point.padding = 0.5,
+    min.segment.length = 0
+  ) +
+  scale_fill_viridis_c(
+    option = "plasma",
+    na.value = "grey90",
+    name = "Unique DOIs"
+  ) +
+  labs(
+    title = "Unique DOI Counts by Country",
+    subtitle = "Top 5 countries labeled"
+  ) +
+  theme_minimal() + theme(
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank()
+  )
+```
+```{r}
+ggsave(
+  "visual_output/top5_doi_countries.png",
+  plot = p5,
+  width = 10,
+  height = 6,
+  units = "in",
+  dpi = 600,
+  bg = "white"
+)
+```
+
+
+#### Finding the Subfields not represented
+
+We have coverage in all domains and fields. and 214 out of 252 subfields in OpenAlex. claude.ai prompt for Sonnet 5 Medium on Aug. 24, 2026 - I asked create a API pull in OpenAlex using R to get subfields data. There are 252 subfields. The Subfields endpoint is at `api.openalex.org/subfields`. What are they? I modified the response code to...
+
 ```{r}
 library(httr2)
 library(dplyr)
-library(purrr)
-library(tibble)
+library(tidyr)
 
-# Pull all subfields via cursor pagination (per_page max = 200,
-# and there are 252 subfields, so this will take 2 pages)
-get_openalex_subfields <- function(mailto = "jungmee.park@wichita.edu") {
-  
-  base_url <- "https://api.openalex.org/subfields"
-  cursor   <- "*"
-  all_results <- list()
-  
-  repeat {
-    resp <- request(base_url) %>%
-      req_url_query(
-        per_page = 200,
-        cursor   = cursor,
-        mailto   = mailto          
-      ) %>%
-      req_perform()
-    
-    parsed <- resp_body_json(resp, simplifyVector = FALSE)
-    
-    all_results <- c(all_results, parsed$results)
-    
-    cursor <- parsed$meta$next_cursor
-    if (is.null(cursor) || length(parsed$results) == 0) break
-  }
-  
-  all_results
+subfields_df <- request("https://api.openalex.org/subfields") %>%
+  req_url_query(per_page = 200) %>%
+  req_perform() %>%
+  resp_body_json(simplifyVector = TRUE) %>%
+  .$results %>%
+  transmute(
+    subfield_id    = id,
+    subfield_name  = display_name,
+    field_id       = field$id,
+    field_name     = field$display_name,
+    domain_id      = domain$id,
+    domain_name    = domain$display_name,
+    works_count,
+    cited_by_count
+  ) %>%
+  mutate(across(ends_with("_id"), ~ sub(".*/", "", .x))) %>%
+  arrange(domain_name, field_name, subfield_name)
+```
+
+```{r}
+get_page <- function(p) {
+  request("https://api.openalex.org/subfields") %>%
+    req_url_query(per_page = 200, page = p) %>%
+    req_perform() %>%
+    resp_body_json(simplifyVector = TRUE) %>%
+    .$results
 }
 
-subfields_raw <- get_openalex_subfields(mailto = "jungmee.park@wichita.edu")
-length(subfields_raw)   # should be 252
-
-# Flatten into a tidy data frame: subfield -> its parent field -> its parent domain
-subfields_df <- map_dfr(subfields_raw, function(x) {
-  tibble(
-    subfield_id    = x$id,
-    subfield_name  = x$display_name,
-    field_id       = x$field$id,
-    field_name     = x$field$display_name,
-    domain_id      = x$domain$id,
-    domain_name    = x$domain$display_name,
-    works_count    = x$works_count %||% NA_integer_,
-    cited_by_count = x$cited_by_count %||% NA_integer_
-  )
-})
-
-# Strip the "https://openalex.org/" prefix off the IDs so you're left with the
-# bare numeric/alpha IDs, matching the style you used earlier (e.g. "2718")
-subfields_df <- subfields_df %>%
-  mutate(
-    subfield_id = sub("https://openalex.org/subfields/", "", subfield_id),
-    field_id    = sub("https://openalex.org/fields/",    "", field_id),
-    domain_id   = sub("https://openalex.org/domains/",   "", domain_id)
+subfields_df <- bind_rows(get_page(1), get_page(2)) %>%
+  transmute(
+    subfield_id    = id,
+    subfield_name  = display_name,
+    field_id       = field$id,
+    field_name     = field$display_name,
+    domain_id      = domain$id,
+    domain_name    = domain$display_name,
+    works_count,
+    cited_by_count
   ) %>%
+  mutate(across(ends_with("_id"), ~ sub(".*/", "", .x))) %>%
   arrange(domain_name, field_name, subfield_name)
 
-
+nrow(subfields_df)   # should be 252
 ```
+
 Google prompt "can you compare two variables in two different datasets" on 8/24/2026
 
-Google ai prompt. dataframe A and dataframe b compare the different responses in the same columns (column names are slightly different) in R (8/24/2026)
-# response code
-# # Example if columns are shuffled
-# library(dplyr)
-# 
-# df_B <- df_B %>% 
-#   rename(col1 = slight_diff_name1, col2 = slight_diff_name2) %>% 
-#   select(colnames(df_A))
+Google AI Mode. dataframe A and dataframe b compare the different responses in the same columns (column names are slightly different) in R (8/24/2026) \# response code \# \# Example if columns are shuffled \# library(dplyr) \# df_B \<- df_B %\>% \# rename(col1 = slight_diff_name1, col2 = slight_diff_name2) %\>% \# select(colnames(df_A))
 
 Use library(waldo) to find missing subfields
+
 ```{r}
 subfields_df <- subfields_df |> 
   mutate(Subfield = subfield_name)
@@ -216,13 +527,10 @@ subfields_df_B <- alex_doi_new1$Subfield
 unshown_subfields <- setdiff(subfields_df_A, subfields_df_B)
 ```
 
+response modified to be shown as a table
 
-response modified to
 ```{r}
 unknown_subfields <- subfields_df |> 
   filter(Subfield %in% unshown_subfields)
 
 ```
-
-
-
